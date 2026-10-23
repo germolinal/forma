@@ -24,7 +24,7 @@ MONGO_URL=SESSIONS_DB_URL=mongodb://root:example@localhost:27017/?directConnecti
 # workspaces and sandbox a server uses is not a build: it is in runtime.yaml.
 FEATURE_SETS := "" multi-tenant hot-reload multi-tenant,hot-reload api cli
 
-.PHONY: check_dependencies cov docs integration_test test check-features pr_checks fix lint bench mock-llm
+.PHONY: check_dependencies cov docs integration_test test check-features pr_checks fix lint bench mock-llm release-patch release-minor release-major
 
 # Measures Forma against a mock LLM: latency, throughput, CPU, memory and where
 # each request's time goes. Writes bench/results/<date>-<commit>/report.md.
@@ -57,3 +57,9 @@ lint:
 	cargo fmt -- --check && \
 	cargo check --tests --workspace --features integration_test && \
 	cargo clippy --workspace -- -D warnings
+
+# Bumps every crate's version, commits and tags `v<version>`; pushing the tag
+# publishes the release. Meant for a clean, up-to-date main: anything else is
+# warned about, and every step asks first. See scripts/release.sh.
+release-patch release-minor release-major:
+	scripts/release.sh $(@:release-%=%)
