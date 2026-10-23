@@ -322,6 +322,7 @@ Every endpoint that acts on behalf of a user expects the `X-User-ID` header.
 | `FORMA_TRACES`                        | Everything                  | Which spans are exported as traces, with the same syntax (default: `info`). Independent of `FORMA_LOGS`: a quiet log still exports every trace |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`         | Everything                  | Where to send traces and logs ([Observability](./observability.md))     |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Everything                  | Where to send metrics                                                   |
+| `OTEL_BSP_MAX_EXPORT_BATCH_SIZE`      | Everything                  | Spans per export to the collector (default: `64`). A standard OpenTelemetry variable, with a smaller default in Forma: check [Observability](./observability.md#export-batch-size) |
 | `K_SERVICE`                           | Multi-tenant runtime        | The service name reported in traces (set automatically by Cloud Run)    |
 | `WORKSPACES_BUCKET`                   | `workspaces: gcs`           | The bucket of the workspaces that name none, and of code runs           |
 | `CODE_EXECUTION_JOB`                  | `code_execution: cloud-run-job` | The Cloud Run Job that runs code (with `GOOGLE_CLOUD_LOCATION`, if it is just the job's name) |

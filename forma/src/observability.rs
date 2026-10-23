@@ -11,7 +11,7 @@ use opentelemetry_sdk::{
     metrics::{SdkMeterProvider, Temporality},
     propagation::TraceContextPropagator,
     resource::ResourceDetector,
-    trace::SdkTracerProvider,
+    trace::{BatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider},
 };
 
 use protocols::envar::get_env_var;
@@ -54,6 +54,10 @@ fn crate_filter() -> Targets {
         .with_target("genai_client", Level::TRACE)
         .with_target("protocols", Level::TRACE)
         .with_target("sessions", Level::TRACE)
+        // OpenTelemetry's own warnings: a rejected or failed export. Without
+        // them, lost telemetry is silent (and looks like a leak).
+        .with_target("opentelemetry_sdk", Level::WARN)
+        .with_target("opentelemetry-otlp", Level::WARN)
 }
 
 const TRACER_NAME: &str = "FormaTracer";
@@ -235,11 +239,26 @@ fn tracer(service_name: &str) -> SdkTracerProvider {
         .with_tonic()
         .build()
         .expect("Failed to create OTLP tracing provider");
+    // Smaller batches than the SDK's 512 spans, unless the standard variable
+    // says otherwise. An LLM span carries its conversation, so 512 of them
+    // can exceed a collector's gRPC message limit (4 MiB by default): the
+    // collector refuses the whole batch, every span in it is lost, and the
+    // queue of waiting spans grows to hundreds of MB.
+    let mut config = BatchConfigBuilder::default();
+    if env::var_os("OTEL_BSP_MAX_EXPORT_BATCH_SIZE").is_none() {
+        config = config.with_max_export_batch_size(SPAN_EXPORT_BATCH_SIZE);
+    }
+    let processor = BatchSpanProcessor::builder(exporter)
+        .with_batch_config(config.build())
+        .build();
     SdkTracerProvider::builder()
         .with_resource(get_resource(service_name))
-        .with_batch_exporter(exporter)
+        .with_span_processor(processor)
         .build()
 }
+
+/// Spans per export when `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` is not set.
+const SPAN_EXPORT_BATCH_SIZE: usize = 64;
 
 fn logger(service_name: &str) -> SdkLoggerProvider {
     let exporter = LogExporter::builder()

@@ -48,27 +48,49 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
 export OTEL_EXPORTER_OTLP_METRICS_ENDPOINT="http://localhost:4317/v1/metrics"
 ```
 
-## Log Levels
+### Logs, traces and export batches
 
-Control the verbosity of Forma logs with FORMA_LOGS variables:
+Three variables control how much telemetry Forma produces, and how it is sent:
 
+| Variable                         | Default | What it controls                                                                 |
+| -------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| `FORMA_LOGS`                     | `info`  | What is *logged*: to the console, and as OpenTelemetry log records               |
+| `FORMA_TRACES`                   | `info`  | Which spans are exported as *traces*. Independent of `FORMA_LOGS`                 |
+| `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` | `64`    | How many spans are sent to the collector in each export (a standard OpenTelemetry variable) |
 
-```sh
-export FORMA_LOGS=info # or debug | trace | warn | error | info (default)
-```
+`FORMA_LOGS` and `FORMA_TRACES` take the same values:
 
 * `trace` – Most detailed, includes every span and step.
 * `debug` – Useful for development; shows workflow decisions and tool calls.
 * `info` – Production-friendly; high-level events and errors only.
-* `warn` - logs warnings and errors
-* `error` - logs only errors
+* `warn` – Warnings and errors.
+* `error` – Errors only.
+* `off` – Nothing.
 
-`FORMA_LOGS` decides what is *logged*, not what is *traced*. Which spans are exported as traces is set by `FORMA_TRACES`, with the same values (default: `info`). So a production server can keep a quiet log and still send every trace:
+They also accept per-module directives, as in [`EnvFilter`](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html) (e.g., `info,agent=debug`).
+
+Because the two are separate, a production server can keep a quiet log and still send every trace, or the other way around:
 
 ```sh
 export FORMA_LOGS=warn     # few log lines
 export FORMA_TRACES=info   # every trace (the default)
+
+# Or: logs, but no traces at all
+export FORMA_TRACES=off
 ```
+
+#### Export batch size
+
+Forma sends traces in batches. `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` is not Forma's own setting: it is one of the [standard OpenTelemetry SDK variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#batch-span-processor), which the SDK reads (along with `OTEL_BSP_MAX_QUEUE_SIZE`, `OTEL_BSP_SCHEDULE_DELAY` and `OTEL_BSP_EXPORT_TIMEOUT`). What is Forma's is the default: **64 spans** instead of the SDK's 512.
+
+The reason is the size of an agent's spans. An LLM span carries the conversation it was given, often tens of KB, and 512 of them can exceed a collector's gRPC message limit (4 MiB by default, in the OpenTelemetry Collector and in most vendors). A collector refuses such a batch whole: every span in it is lost, and the spans waiting to be sent pile up in memory (up to 2,048 by default). Smaller batches stay under the limit.
+
+Change it only if you need to:
+
+* **Lower** (e.g., `16`) if your conversations are very long, or your collector's limit is smaller, and you still see exports refused.
+* **Higher** if your collector accepts larger messages (e.g., `max_recv_msg_size_mib` in the OpenTelemetry Collector's OTLP receiver) and you want fewer, larger exports.
+
+A refused export shows up in Forma's logs as a warning from `opentelemetry-otlp`, often with the gRPC code `ResourceExhausted`.
 
 ### Quick Start with Phoenix
 
