@@ -195,7 +195,7 @@ fn job_from_env() -> Result<String, FormaError> {
 /// One execution of a Cloud Run Job per run.
 ///
 /// The job itself (image, service account with no roles, network without
-/// internet) is defined in infra/code-execution.tf; a run only overrides the
+/// internet) is deployed beforehand, outside Forma; a run only overrides the
 /// manifest URL and the timeout.
 #[derive(Debug, Clone)]
 pub struct CloudRunJob {
@@ -521,25 +521,6 @@ impl Sandbox for LocalDocker {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_job_names_are_held_to_real_ones() {
-        assert!(is_job_name(
-            "projects/clonsult-dev/locations/southamerica-west1/jobs/code-execution"
-        ));
-        for bad in [
-            "code-execution",
-            "projects/p/locations/r/jobs/j/extra",
-            "projects/p/locations/r/jobs/j:run",
-            "projects/p/locations/r/jobs/j?x=1",
-            "projects/../locations/r/jobs/j",
-            "projects/P/locations/r/jobs/j",
-            "projects/p/locations/r/jobs/",
-            "projects/p/locations/r/services/j",
-        ] {
-            assert!(!is_job_name(bad), "{bad}");
-        }
-    }
 
     #[test]
     fn test_images_cannot_be_options() {

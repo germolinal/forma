@@ -11,10 +11,9 @@
 //! Everything lives inside the workspace itself, under [`HISTORY_ROOT`], so it
 //! works the same in Cloud Storage and in a folder, and needs nothing else to
 //! be deployed. Each changed file is one record, `.history/changes/<id>.json`,
-//! with the approved bytes at `.history/base/<id>`. The backend reads the same
-//! records to show them and to approve or revert them
-//! (back/workspace_changes.go), so their shape is shared and must not change
-//! on one side only.
+//! with the approved bytes at `.history/base/<id>`. Applications built on
+//! Forma may read the same records to show them and to approve or revert
+//! them, so their shape is a contract: change it with care.
 //!
 //! A change nobody reviews is approved on its own [`KEEP_FOR`] after it was
 //! last touched: its record and copy are dropped by whoever reads the records

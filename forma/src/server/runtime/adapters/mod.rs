@@ -982,8 +982,8 @@ where
     }
 }
 
-/// How long a run's claim on its session lasts. Matches the channel service's
-/// request timeout (`infra/forma-channels.tf`): no run outlives the request
+/// How long a run's claim on its session lasts. Matches the server's maximum
+/// request timeout on Cloud Run (one hour): no run outlives the request
 /// carrying it, so an older claim belongs to a run that died without releasing
 /// it — a crashed instance — and is taken over.
 const RUN_CLAIM_TTL: chrono::TimeDelta = chrono::TimeDelta::hours(1);

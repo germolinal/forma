@@ -190,7 +190,7 @@ Set them as environment variables.
 | `BENCH_FORMA_LOGS`             | `warn`                          | Forma's `FORMA_LOGS`                                               |
 | `BENCH_SESSIONS_DB_URL`        | (a throwaway container)         | A MongoDB of your own. The sessions a run opens are deleted after it, and nothing is seeded |
 | `BENCH_DB_MESSAGES`            | `50000`                         | Messages of other conversations the throwaway database starts with |
-| `BENCH_DB_INDEXES`             | `0`                             | `1` creates, in the throwaway database, the indexes `infra/firebase.tf` declares for `forma-db` |
+| `BENCH_DB_INDEXES`             | `0`                             | `1` creates, in the throwaway database, the indexes recommended for the sessions database |
 | `BENCH_MOCK_STRICT`            | `1`                             | `0` lets the mock accept conversations a real provider would refuse |
 | `BENCH_BIN`                    | (build the working tree)        | A directory with `forma-<target>` and `forma-cli` binaries to measure instead, e.g. built from another branch |
 | `BENCH_OUT`                    | `bench/results/<date>-<commit>` | Where the results go                                               |

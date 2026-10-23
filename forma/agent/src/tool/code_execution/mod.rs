@@ -24,7 +24,7 @@
 //! - The container's service account has no roles. All it can touch is what
 //!   the run's manifest grants: a signed GET per input, a signed PUT per log
 //!   (size-limited), and a POST policy for its own `out/` folder.
-//! - The container has no internet (infra/code-execution.tf).
+//! - The container has no internet (the job's network has no egress).
 //! - Inside it, the command runs as an unprivileged user that never sees the
 //!   manifest (sandbox/entrypoint.py).
 //! - Run folders are derived from the caller, like scrapbooks, so nobody can
@@ -654,7 +654,7 @@ async fn persist_one(run_store: &dyn DocStore, plan: &PersistPlan) -> Result<(),
     Ok(())
 }
 
-/// What a run is billed by (see `toolUnitPrices` in back/pricing.go).
+/// The unit a run's usage is reported in, for platforms that bill by it.
 const BILLED_UNIT: &str = "second";
 
 /// Whole seconds, rounded up: a run that started is never free.

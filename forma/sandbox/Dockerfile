@@ -1,7 +1,7 @@
 # The code-execution sandbox: one container per run, started by the forma
 # runtime as a Cloud Run Job execution (or `docker run` locally). See
-# entrypoint.py for what happens inside, and infra/code-execution.tf for the
-# job, its empty service account and its network without internet.
+# entrypoint.py for what happens inside. Deploy the job with a service account
+# that has no roles, and on a network without internet.
 FROM python:3.12-slim-bookworm
 
 # bash, coreutils, grep and sed come with the base image; awk is mawk there, so

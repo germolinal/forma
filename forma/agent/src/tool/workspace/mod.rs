@@ -67,8 +67,8 @@ const SCRAPBOOK_ROOT: &str = "scrapbooks";
 
 /// Root prefix under which every code-execution run keeps its files, one
 /// folder per run: `runs/{owner}/{user}/{run_id}/`. Kept apart from everything
-/// else in the bucket so the lifecycle rule that deletes runs after a day
-/// (infra/code-execution.tf) can never reach a workspace or a scrapbook.
+/// else in the bucket so a lifecycle rule that deletes runs (e.g., after a
+/// day) can never reach a workspace or a scrapbook.
 pub(crate) const RUNS_ROOT: &str = "runs";
 
 /// Where a docstore tool's prefix comes from, and what it takes to reach it.
@@ -1109,11 +1109,11 @@ fn readable(doc: &AttachedDoc) -> Result<Readable, FormaError> {
     }
 }
 
-/// What an Excel workbook is stored under (`xlsxType` in back/filetypes.go).
+/// What an Excel workbook is stored under.
 pub(crate) const XLSX_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/// What a PowerPoint deck is stored under (`pptxType` in back/filetypes.go).
+/// What a PowerPoint deck is stored under.
 pub(crate) const PPTX_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 

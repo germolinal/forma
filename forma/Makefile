@@ -37,8 +37,7 @@ bench:
 mock-llm:
 	cargo run --release -p forma-bench --bin mock-llm -- $(MOCK_LLM_ARGS)
 
-# Mirrored by the "Feature checks" step in cicd/test-forma.yaml, and run by
-# .github/workflows/ci.yml. `set -e` is load-bearing: a `for` loop reports the
+# Run by .github/workflows/ci.yml. `set -e` is load-bearing: a `for` loop reports the
 # exit status of its *last* command, so without it a failing `cargo check` is
 # swallowed and the loop still reports success.
 check-features:

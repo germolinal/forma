@@ -1,6 +1,6 @@
 # Runtime base, pinned by digest so every build of this file runs on the same
-# bytes. Bump it on purpose. The LABEL below records it in the image, which is
-# where cicd/lib/release-binaries.sh reads it from for self-hosted releases.
+# bytes. Bump it on purpose. The LABEL below records it in the image, so the
+# base of any published image can be traced back.
 ARG BASE_IMAGE=gcr.io/distroless/cc-debian12:latest@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa
 
 FROM rust:1.99.1-bookworm as build

@@ -1,6 +1,6 @@
 # Runtime base, pinned by digest so every build of this file runs on the same
-# bytes. Bump it on purpose. The LABEL below records it in the image, which is
-# where cicd/lib/release-binaries.sh reads it from for self-hosted releases.
+# bytes. Bump it on purpose. The LABEL below records it in the image, so the
+# base of any published image can be traced back.
 ARG BASE_IMAGE=gcr.io/distroless/cc-debian12:latest@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa
 
 FROM rust:1.99.1-bookworm as build
@@ -26,8 +26,8 @@ EXPOSE ${PORT}
 
 COPY --from=build /app/target/release/forma /app/forma
 # The runtime file is not in the image: whoever runs it mounts one at
-# /config/runtime.yaml (Clonsult's channels: infra/forma-channels.tf), or
-# replaces this command. Exec form does no variable expansion, so --service is
-# left off deliberately: it is resolved at runtime from Cloud Run's K_SERVICE
-# env var instead.
+# /config/runtime.yaml (e.g., `docker run -v ./runtime.yaml:/config/runtime.yaml`,
+# or a secret mounted as a file on Cloud Run), or replaces this command. Exec
+# form does no variable expansion, so --service is left off deliberately: it is
+# resolved at runtime from Cloud Run's K_SERVICE env var instead.
 CMD ["/app/forma", "serve", "-t", "just-otel", "-r", "/config/runtime.yaml"]

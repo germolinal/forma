@@ -138,7 +138,7 @@ fresh_database() {
 			}
 			d.messages.insertMany(batch, { ordered: false });
 		}
-		// The indexes infra/firebase.tf declares for forma-db.
+		// The indexes recommended for the sessions database.
 		if ($DB_INDEXES) {
 			d.messages.createIndex({ session_id: 1, created_at: -1 });
 			d.messages.createIndex({ id: 1, session_id: 1 });
