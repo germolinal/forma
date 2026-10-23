@@ -19,7 +19,7 @@ use serde::Serialize;
 use tracing::{Level, info};
 use tracing_subscriber::{
     EnvFilter,
-    filter::Targets,
+    filter::{FilterExt, Targets},
     fmt::{self},
     prelude::*,
 };
@@ -30,8 +30,16 @@ use tracing_subscriber::filter::LevelFilter;
 
 use opentelemetry::trace::TracerProvider as _;
 
+/// What is logged: to the console, and as OpenTelemetry log records.
 fn env_filter() -> EnvFilter {
     EnvFilter::try_from_env("FORMA_LOGS").unwrap_or_else(|_| EnvFilter::new("info"))
+}
+
+/// Which spans are exported as traces. Separate from `FORMA_LOGS`, so that a
+/// quiet log (`FORMA_LOGS=warn`) still exports every trace: with one filter
+/// for both, `warn` dropped the (INFO) spans, and no trace was ever sent.
+fn traces_filter() -> EnvFilter {
+    EnvFilter::try_from_env("FORMA_TRACES").unwrap_or_else(|_| EnvFilter::new("info"))
 }
 
 fn crate_filter() -> Targets {
@@ -105,12 +113,16 @@ impl Telemeter {
                 #[cfg(feature = "cli")]
                 let with_ansi = true;
 
+                // A filter per layer: logs follow FORMA_LOGS, spans
+                // FORMA_TRACES, and both only Forma's own crates.
                 let subscriber = tracing_subscriber::registry()
-                    .with(crate_filter())
-                    .with(env_filter())
-                    .with(tracing_subscriber::fmt::layer().with_ansi(with_ansi))
-                    .with(tracing_layer)
-                    .with(logging_layer);
+                    .with(
+                        tracing_subscriber::fmt::layer()
+                            .with_ansi(with_ansi)
+                            .with_filter(crate_filter().and(env_filter())),
+                    )
+                    .with(tracing_layer.with_filter(crate_filter().and(traces_filter())))
+                    .with(logging_layer.with_filter(crate_filter().and(env_filter())));
 
                 subscriber.init();
 
@@ -140,24 +152,22 @@ impl Telemeter {
                 //
                 // Interactive CLI builds get no console layer at all, which is
                 // the whole point of this mode for REPL chat.
+                // A filter per layer, as in `Otel`: logs follow FORMA_LOGS,
+                // spans FORMA_TRACES.
                 #[cfg(not(feature = "cli"))]
                 let subscriber = tracing_subscriber::registry()
-                    // .with(crate_filter())
-                    .with(env_filter())
                     .with(
                         tracing_subscriber::fmt::layer()
                             .with_ansi(false)
-                            .with_filter(LevelFilter::WARN),
+                            .with_filter(LevelFilter::WARN.and(env_filter())),
                     )
-                    .with(tracing_layer)
-                    .with(logging_layer);
+                    .with(tracing_layer.with_filter(traces_filter()))
+                    .with(logging_layer.with_filter(env_filter()));
 
                 #[cfg(feature = "cli")]
                 let subscriber = tracing_subscriber::registry()
-                    // .with(crate_filter())
-                    .with(env_filter())
-                    .with(tracing_layer)
-                    .with(logging_layer);
+                    .with(tracing_layer.with_filter(traces_filter()))
+                    .with(logging_layer.with_filter(env_filter()));
 
                 subscriber.init();
 

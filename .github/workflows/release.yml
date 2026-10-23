@@ -182,7 +182,10 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
       - uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          # `_` separates the parts because image names contain `-`: with
+          # `digests-forma-*`, forma's job would also download forma-cli's,
+          # forma-manager's... digests, and fail to join them.
+          name: digests_${{ matrix.image.name }}_${{ matrix.platform.arch }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -205,7 +208,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: digests-${{ matrix.image }}-*
+          pattern: digests_${{ matrix.image }}_*
           path: /tmp/digests
           merge-multiple: true
       - uses: docker/setup-buildx-action@v3

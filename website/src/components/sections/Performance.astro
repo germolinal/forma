@@ -1,30 +1,44 @@
 ---
 import { links } from "../../config/site";
+import PerformanceChart from "./PerformanceChart.astro";
+// Written by `make bench-site` (or `make bench-chart`) in forma/: the summary
+// of two runs of `make bench`, without and with OpenTelemetry.
+import bench from "../../data/bench.json";
 
-// From `make bench` (forma/bench), runs `fixed` and `fixed-db-indexed`.
+const plain = bench.runs["Without OpenTelemetry"];
+const otel = bench.runs["With OpenTelemetry"];
+
+const ms = (v: number) => `${v < 10 ? v.toFixed(1) : Math.round(v)} ms`;
+const mb = (v: number) => `${Math.round(v)} MB`;
+const perS = (v: number) => `${Math.round(v).toLocaleString("en-US")}/s`;
+const range = (r: typeof plain) =>
+  `${Math.round(r.targets.none.rss_mb_one_conversation)}–${mb(r.targets.mongo.rss_mb_peak)}`;
+const realistic = plain.targets.mongo.realistic;
+
 const stats = [
   {
-    value: "~1 ms",
     label: "Forma's own time per message",
-    detail:
-      "On top of the LLM, median. About 4 ms with MongoDB, including 7 round trips to the database.",
+    value: ms(plain.targets.none.overhead_ms),
+    detail: `On top of the LLM, median. ${ms(plain.targets.mongo.overhead_ms)} with MongoDB, including its round trips.`,
+    otel: ms(otel.targets.none.overhead_ms),
   },
   {
-    value: "18–49 MB",
     label: "Memory",
-    detail: "From one conversation to 64 at once, with MongoDB.",
+    value: range(plain),
+    detail: `From one conversation to ${realistic.concurrency} at once, with MongoDB.`,
+    otel: range(otel),
   },
   {
-    value: "~3 ms",
     label: "CPU per message",
-    detail:
-      "The whole tool loop, streamed: 64 conversations at once keep a tenth of one core busy.",
+    value: ms(plain.targets.mongo.cpu_ms_per_message),
+    detail: `The whole tool loop, streamed: ${realistic.concurrency} conversations at once keep ${realistic.cores_busy.toFixed(2)} of a core busy.`,
+    otel: ms(otel.targets.mongo.cpu_ms_per_message),
   },
   {
-    value: "6,400/s",
-    label: "Messages per second",
-    detail:
-      "With an LLM that answers instantly and no database: the runtime's ceiling. 930/s with MongoDB.",
+    label: "Messages per second, at most",
+    value: perS(plain.targets.none.messages_per_s),
+    detail: `Forma's ceiling, with an LLM that answers instantly. With a real LLM's pace, ${realistic.concurrency} conversations at once make ${Math.round(realistic.messages_per_s)} messages/s: the LLM sets the pace.`,
+    otel: perS(otel.targets.none.messages_per_s),
   },
 ];
 ---
@@ -47,24 +61,32 @@ const stats = [
             {stat.label}
           </dt>
           <dd class="font-display order-1 text-3xl font-semibold tabular-nums">
-            {stat.value}
+            {stat.otel}
           </dd>
-          <dd class="text-muted-foreground order-3 mt-3 text-[0.95rem] leading-relaxed">
+	  <!--<dd class="text-muted-foreground order-3 mt-3 mb-4 text-[0.95rem] leading-relaxed">
             {stat.detail}
-          </dd>
+	  </dd>-->
+	  <!--<dd class="order-4 mt-auto border-t pt-3 text-sm">
+            <span class="text-muted-foreground">With OpenTelemetry: </span>
+            <span class="font-medium tabular-nums">{stat.otel}</span>
+	  </dd> -->
         </div>
       ))
     }
   </dl>
 
+  <PerformanceChart />
+
   <p class="text-muted-foreground mt-6 max-w-3xl text-sm leading-relaxed">
-    Measured with <code class="font-mono">make bench</code> on an 8-core Apple Silicon
-    laptop. Each message is a full tool loop: an LLM call that asks for a tool, the
-    tool, and an LLM call that answers. The LLM is a mock, so the numbers are Forma's
-    alone; MongoDB ran on the same machine, indexed, holding 50,000 other messages.
-    Exporting traces over OpenTelemetry raises memory to about 50–70 MB. A cloud's
-    shared CPU answers fewer messages per second, but memory and CPU per message carry
-    over.
+    Measured with <code class="font-mono">make bench</code> ({
+      plain.machine.replace(/\.$/, "")
+    }). Each message is a full tool loop: an LLM call that asks for a tool, the
+    tool, and an LLM call that answers. The LLM is a mock, so the numbers are
+    Forma's alone; MongoDB ran on the same machine, indexed, holding 50,000
+    other messages. "With OpenTelemetry" exports traces, metrics and logs to a
+    collector, which costs memory and CPU, more so under heavy load. A cloud's
+    shared CPU answers fewer messages per second, but memory and CPU per message
+    carry over.
     <a
       href={links.bench}
       class="text-accent-text underline-offset-4 hover:underline"

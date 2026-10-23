@@ -24,7 +24,7 @@ MONGO_URL=SESSIONS_DB_URL=mongodb://root:example@localhost:27017/?directConnecti
 # workspaces and sandbox a server uses is not a build: it is in runtime.yaml.
 FEATURE_SETS := "" multi-tenant hot-reload multi-tenant,hot-reload api cli
 
-.PHONY: check_dependencies cov docs integration_test test check-features pr_checks fix lint bench mock-llm release-patch release-minor release-major
+.PHONY: check_dependencies cov docs integration_test test check-features pr_checks fix lint bench bench-site bench-chart mock-llm release-patch release-minor release-major
 
 # Measures Forma against a mock LLM: latency, throughput, CPU, memory and where
 # each request's time goes. Writes bench/results/<date>-<commit>/report.md.
@@ -32,6 +32,20 @@ FEATURE_SETS := "" multi-tenant hot-reload multi-tenant,hot-reload api cli
 # "Benchmarking" in README.md.
 bench:
 	bench/run.sh
+
+# The numbers on the website: the single-tenant targets (indexed MongoDB), once
+# without telemetry and once exporting it to an OpenTelemetry Collector, then a
+# chart of both (bench/results/chart.svg). Copies the summary to the website,
+# which draws its own chart from it. The second
+# run logs at `info`, production's default, so its logs are exported too.
+bench-site:
+	BENCH_TARGETS="none mongo" BENCH_DB_INDEXES=1 BENCH_TELEMETRY=console BENCH_OUT=bench/results/console bench/run.sh
+	BENCH_TARGETS="none mongo" BENCH_DB_INDEXES=1 BENCH_TELEMETRY=otel BENCH_FORMA_LOGS=info BENCH_BIN=target/bench BENCH_OUT=bench/results/otel bench/run.sh
+	$(MAKE) bench-chart
+
+bench-chart:
+	bench/chart.py --run "Without OpenTelemetry=bench/results/console" --run "With OpenTelemetry=bench/results/otel" --out bench/results
+	cp bench/results/summary.json ../website/src/data/bench.json
 
 # Runs the mock LLM on its own (port 11500), to point an agent at by hand.
 mock-llm:

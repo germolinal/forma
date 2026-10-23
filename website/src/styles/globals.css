@@ -30,6 +30,10 @@
   --input: #e2ded4;
   --ring: #d98a1c;
   --radius: 0.75rem;
+  /* Chart series, validated as a pair on the card surface (dataviz
+     validate_palette.js: lightness, chroma, CVD separation, contrast). */
+  --chart-1: #2f6fc4;
+  --chart-2: #c47612;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -52,6 +56,8 @@
     --border: #253043;
     --input: #253043;
     --ring: #f2a93b;
+    --chart-1: #4a86d8;
+    --chart-2: #c27914;
   }
 }
 
@@ -80,6 +86,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);

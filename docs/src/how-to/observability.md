@@ -63,6 +63,13 @@ export FORMA_LOGS=info # or debug | trace | warn | error | info (default)
 * `warn` - logs warnings and errors
 * `error` - logs only errors
 
+`FORMA_LOGS` decides what is *logged*, not what is *traced*. Which spans are exported as traces is set by `FORMA_TRACES`, with the same values (default: `info`). So a production server can keep a quiet log and still send every trace:
+
+```sh
+export FORMA_LOGS=warn     # few log lines
+export FORMA_TRACES=info   # every trace (the default)
+```
+
 ### Quick Start with Phoenix
 
 If you want to analyze AI-specific traces:

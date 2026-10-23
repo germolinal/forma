@@ -21,6 +21,8 @@ TELEMETRY=${BENCH_TELEMETRY:-console}
 LOGS=${BENCH_FORMA_LOGS:-warn}
 SEED_MESSAGES=${BENCH_DB_MESSAGES:-50000}
 DB_INDEXES=${BENCH_DB_INDEXES:-0}
+OTEL_PORT=${BENCH_OTEL_PORT:-14317}
+OTEL_IMAGE=${BENCH_OTEL_IMAGE:-otel/opentelemetry-collector:0.115.1}
 # 0 lets the mock accept conversations a real provider would refuse.
 STRICT=$([ "${BENCH_MOCK_STRICT:-1}" = 0 ] && echo false || echo true)
 API_KEY=bench-key
@@ -57,10 +59,12 @@ storage() {
 MOCK_PID=
 FORMA_PID=
 MONGO_CONTAINER=
+OTEL_CONTAINER=
 cleanup() {
 	if [ -n "$FORMA_PID" ]; then kill "$FORMA_PID" 2>/dev/null || true; fi
 	if [ -n "$MOCK_PID" ]; then kill "$MOCK_PID" 2>/dev/null || true; fi
 	if [ -n "$MONGO_CONTAINER" ]; then docker stop "$MONGO_CONTAINER" >/dev/null 2>&1 || true; fi
+	if [ -n "$OTEL_CONTAINER" ]; then docker stop "$OTEL_CONTAINER" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT
 
@@ -93,6 +97,24 @@ echo "==> starting the mock LLM on port $MOCK_PORT"
 target/release/mock-llm --port "$MOCK_PORT" >"$OUT/mock-llm.log" 2>&1 &
 MOCK_PID=$!
 wait_for_port "$MOCK_PORT"
+
+# Telemetry that goes nowhere costs less than telemetry that is sent: unless
+# OTEL_EXPORTER_OTLP_ENDPOINT names a collector of your own, the `otel` modes
+# send to a throwaway one, so that what is measured includes exporting.
+case $TELEMETRY in
+otel | just-otel)
+	if [ -z "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+		echo "==> starting a throwaway OpenTelemetry Collector on port $OTEL_PORT"
+		OTEL_CONTAINER=forma-bench-otel
+		docker rm -f "$OTEL_CONTAINER" >/dev/null 2>&1 || true
+		# The image's default configuration receives OTLP and drops it
+		# (debug exporter, basic verbosity).
+		docker run -d --rm --name "$OTEL_CONTAINER" -p "$OTEL_PORT:4317" "$OTEL_IMAGE" >/dev/null
+		export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:$OTEL_PORT"
+		sleep 3
+	fi
+	;;
+esac
 
 needs_mongo=no
 for t in $TARGETS; do
@@ -260,6 +282,7 @@ done
 	echo "$(date '+%Y-%m-%d %H:%M'), $(uname -sm), $(getconf _NPROCESSORS_ONLN) CPUs."
 	echo "Targets: $TARGETS. Telemetry: \`$TELEMETRY\`, \`FORMA_LOGS=$LOGS\`."
 	if [ "$STRICT" = false ]; then echo "The mock accepted conversations a real provider would refuse (\`BENCH_MOCK_STRICT=0\`)."; fi
+	if [ -n "$OTEL_CONTAINER" ]; then echo "Telemetry was exported to a throwaway OpenTelemetry Collector (\`$OTEL_IMAGE\`)."; fi
 	if [ -n "$MONGO_CONTAINER" ]; then
 		echo "Each MongoDB target starts on a fresh database holding $SEED_MESSAGES messages of other conversations$([ "$DB_INDEXES" = 1 ] && echo ', with indexes on what Forma queries' || echo ', without indexes')."
 	fi

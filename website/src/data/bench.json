@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-23",
+  "runs": {
+    "Without OpenTelemetry": {
+      "machine": "2026-10-23 11:54, Darwin arm64, 8 CPUs.",
+      "targets": {
+        "none": {
+          "overhead_ms": 1.425,
+          "overhead_p90_ms": 2.045,
+          "cpu_ms_per_message": 2.5868055555555554,
+          "rss_mb_one_conversation": 19.34375,
+          "rss_mb_peak": 32.28125,
+          "messages_per_s": 6848.544771297544,
+          "realistic": {
+            "concurrency": 64,
+            "messages_per_s": 38.23011133130035,
+            "latency_p50_ms": 1673.127,
+            "cores_busy": 0.09889386438131514
+          },
+          "errors": 0
+        },
+        "mongo": {
+          "overhead_ms": 12.566,
+          "overhead_p90_ms": 18.468,
+          "cpu_ms_per_message": 3.6631944444444446,
+          "rss_mb_one_conversation": 23.421875,
+          "rss_mb_peak": 47.734375,
+          "messages_per_s": 678.532366317626,
+          "realistic": {
+            "concurrency": 64,
+            "messages_per_s": 36.430896579856814,
+            "latency_p50_ms": 1758.474,
+            "cores_busy": 0.13345345795746158
+          },
+          "errors": 0
+        }
+      }
+    },
+    "With OpenTelemetry": {
+      "machine": "2026-10-23 11:56, Darwin arm64, 8 CPUs.",
+      "targets": {
+        "none": {
+          "overhead_ms": 2.265,
+          "overhead_p90_ms": 3.131,
+          "cpu_ms_per_message": 5.293103448275862,
+          "rss_mb_one_conversation": 47.625,
+          "rss_mb_peak": 78.46875,
+          "messages_per_s": 1885.6081071154924,
+          "realistic": {
+            "concurrency": 64,
+            "messages_per_s": 34.82915818827575,
+            "latency_p50_ms": 1669.172,
+            "cores_busy": 0.18435433730690784
+          },
+          "errors": 0
+        },
+        "mongo": {
+          "overhead_ms": 11.655,
+          "overhead_p90_ms": 17.919,
+          "cpu_ms_per_message": 6.180555555555555,
+          "rss_mb_one_conversation": 77.6875,
+          "rss_mb_peak": 459.015625,
+          "messages_per_s": 549.7551433049507,
+          "realistic": {
+            "concurrency": 64,
+            "messages_per_s": 36.600879400484146,
+            "latency_p50_ms": 1748.151,
+            "cores_busy": 0.2262137685168812
+          },
+          "errors": 0
+        }
+      }
+    }
+  }
+}

@@ -319,6 +319,7 @@ Every endpoint that acts on behalf of a user expects the `X-User-ID` header.
 | `SESSIONS_DB_URL`                     | `storage: mongo`, manager   | The connection string of the MongoDB-compatible database                |
 | `FORMA_ENCRYPTION_KEY`                | Runtime, manager, CLI       | Encrypts stored credentials and OAuth tokens                            |
 | `FORMA_LOGS`                          | Everything                  | Log level: `trace`, `debug`, `info` (default), `warn` or `error`         |
+| `FORMA_TRACES`                        | Everything                  | Which spans are exported as traces, with the same syntax (default: `info`). Independent of `FORMA_LOGS`: a quiet log still exports every trace |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`         | Everything                  | Where to send traces and logs ([Observability](./observability.md))     |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Everything                  | Where to send metrics                                                   |
 | `K_SERVICE`                           | Multi-tenant runtime        | The service name reported in traces (set automatically by Cloud Run)    |
