@@ -1,0 +1,25 @@
+---
+const channels = [
+  ["Sync", "OpenAI-compatible request and response"],
+  ["SSE", "Streamed events for tool use and progress"],
+  ["AI SDK v5", "For web apps built with the Vercel AI SDK"],
+  ["WhatsApp", "Through the WhatsApp Cloud API"],
+  ["Telegram", "Through a Telegram bot"],
+];
+---
+
+<section class="shell section border-t">
+  <h2 class="text-3xl font-semibold sm:text-4xl">
+    One definition, many channels
+  </h2>
+  <ul class="mt-10 border-t">
+    {
+      channels.map(([name, description]) => (
+        <li class="flex flex-col gap-0.5 border-b py-4 sm:flex-row sm:justify-between sm:gap-4">
+          <strong class="font-display font-semibold">{name}</strong>
+          <span class="text-muted-foreground">{description}</span>
+        </li>
+      ))
+    }
+  </ul>
+</section>

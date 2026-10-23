@@ -1,0 +1,23 @@
+---
+import { docs, site } from "../config/site";
+---
+
+<footer class="border-t">
+  <div
+    class="shell text-muted-foreground flex flex-wrap items-center justify-between gap-2 py-8 text-sm"
+  >
+    <span>{site.name}, {site.tagline.toLowerCase()}.</span>
+    <span class="flex gap-4">
+      <a
+        href={docs.home}
+        class="hover:text-foreground underline-offset-4 hover:underline"
+        >Documentation</a
+      >
+      <a
+        href={site.repo}
+        class="hover:text-foreground underline-offset-4 hover:underline"
+        >Source</a
+      >
+    </span>
+  </div>
+</footer>

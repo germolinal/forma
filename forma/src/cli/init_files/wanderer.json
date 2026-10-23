@@ -1,0 +1,21 @@
+{
+    "name": "wanderer",
+    "description": "A dataset by Persona 'wanderer'",
+    "data": [
+        {
+            "input": "What functionality can I access?\n"
+        },
+        {
+            "input": "What's the purpose of this chat? Is there someone behind it or it just works by itself?\n"
+        },
+        {
+            "input": "What's your purpose or functionality? Can I talk to a human if needed?\n"
+        },
+        {
+            "input": "???"
+        },
+        {
+            "input": "What's the main purpose of this chatbot (for myself to know better)?\n"
+        }
+    ]
+}

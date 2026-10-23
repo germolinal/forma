@@ -1,0 +1,21 @@
+---
+import Mark from "./Mark.astro";
+import { href as link } from "../../config/site";
+
+interface Props {
+  /** Where the wordmark links to; null renders it without a link. */
+  href?: string | null;
+}
+
+const { href = link() } = Astro.props;
+const Tag = href ? "a" : "span";
+---
+
+<Tag
+  href={href ?? undefined}
+  class="font-display flex items-center gap-2.5 text-xl font-semibold tracking-tight"
+  aria-label={href ? "Forma, home" : undefined}
+>
+  <Mark class="size-8" />
+  <span>forma</span>
+</Tag>

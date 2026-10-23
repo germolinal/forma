@@ -1,0 +1,10 @@
+[book]
+authors = ["German Molina"]
+language = "en"
+src = "src"
+title = "Forma Docs"
+
+[output.html]
+no-section-label = true
+git-repository-url = "https://github.com/germolinal/forma"
+edit-url-template = "https://github.com/germolinal/forma/edit/main/docs/{path}"

@@ -1,0 +1,27 @@
+---
+import Button from "../ui/Button.astro";
+import { docs, site } from "../../config/site";
+---
+
+<section class="shell pt-20 pb-16 sm:pt-28 sm:pb-24">
+  <p
+    class="text-accent-text mb-4 font-mono text-xs font-semibold tracking-[0.12em] uppercase"
+  >
+    {site.tagline}
+  </p>
+  <h1
+    class="max-w-3xl text-[2.6rem] leading-[1.05] font-bold sm:text-6xl lg:text-7xl"
+  >
+    Write the agent once.<br />Run it anywhere.
+  </h1>
+  <p class="text-muted-foreground mt-6 max-w-2xl text-lg leading-relaxed">
+    Forma separates what an agent <em>is</em> from where it <em>runs</em>. You
+    describe the agent in YAML: prompts, tools, workflows and evaluations. Forma
+    serves it over HTTP, to a web app, on WhatsApp or on Telegram, without code
+    changes.
+  </p>
+  <div class="mt-8 flex flex-wrap gap-3">
+    <Button href={docs.gettingStarted} size="lg">Get started</Button>
+    <Button href={docs.home} size="lg" variant="outline">Read the docs</Button>
+  </div>
+</section>

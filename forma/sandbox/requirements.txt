@@ -1,0 +1,10 @@
+# What code run in the sandbox can import. There is no network at run time, so
+# nothing else can be installed: keep this list in sync with the packages the
+# code-execution tool tells the model about (forma/agent/src/tool/code_execution).
+numpy==2.1.3
+pandas==2.2.3
+scipy==1.14.1
+statsmodels==0.14.4
+matplotlib==3.9.3
+openpyxl==3.1.5
+python-pptx==1.0.2

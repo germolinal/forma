@@ -1,0 +1,30 @@
+[package]
+name = "evaluations"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+db = { path = "../db" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+protocols = { path = "../protocols" }
+agent = { path = "../agent" }
+tracing = { workspace = true }
+tokio = { workspace = true }
+rand = { workspace = true }
+genai_client = { path = "../genai_client" }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+utils = { path = "../utils" }
+uuid = { workspace = true }
+
+[dev-dependencies]
+uuid = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = []
+integration_test = []

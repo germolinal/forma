@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.git
+.github
+.gitignore
+.vscode
+.claude
+cobertura.xml
+codecov.yaml
+img
+LICENSE
+test-agent
+Makefile
+cov.html
+target
+README.md

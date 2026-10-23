@@ -1,0 +1,130 @@
+# Forma's checks: formatting, clippy, tests (with MongoDB and Phoenix, as
+# `make test` expects) and every build Forma ships (`make check-features`).
+# Mirrors `make pr_checks` in forma/Makefile, which it calls where it can.
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - "forma/**"
+      - ".github/workflows/ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "forma/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Same as forma/Dockerfile.tester.
+  RUST_TOOLCHAIN: "1.99.1"
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+defaults:
+  run:
+    working-directory: forma
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: forma
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo clippy --workspace -- -D warnings
+      - name: Integration tests compile
+        run: cargo check --tests --workspace --features integration_test
+
+  test:
+    name: Test
+    needs: [fmt, clippy]
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:8
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: example
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      phoenix:
+        image: arizephoenix/phoenix:latest
+        ports:
+          - 4317:4317
+          - 6006:6006
+    env:
+      SESSIONS_DB_URL: mongodb://root:example@localhost:27017/?directConnection=true
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
+      PHOENIX_EVAL_ENDPOINT: http://localhost:6006
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: forma
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Wait for Phoenix
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:6006 >/dev/null && exit 0
+            sleep 2
+          done
+          echo "Phoenix did not start" >&2
+          exit 1
+      - name: Test
+        # The CLI's build and production's: `make test` runs both.
+        run: make test
+
+  # Forma ships a few builds: production servers (single- or multi-tenant,
+  # with or without hot reloading), the manager and the CLI. Each must build
+  # and pass clippy. Which client, storage, workspaces and sandbox a server
+  # uses is not a build: it is in its runtime.yaml.
+  builds:
+    name: Builds
+    needs: [fmt, clippy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: forma
+          shared-key: builds
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: make check-features

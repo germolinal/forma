@@ -1,0 +1,49 @@
+# The agent `make bench` measures Forma with. Shaped like the agents in
+# production (a ~5 kB system prompt with variables, one tool, streaming), but
+# its LLM is the mock in `bench/src/bin/mock_llm.rs`, so a turn costs nothing
+# and takes exactly as long as the mock is told to.
+#
+# Every user message gets the whole loop: the mock calls `lookup-order`, the
+# tool runs, and the mock answers with text.
+#
+# `__MOCK_LLM_PORT__` is replaced by `bench/run.sh` before compiling.
+id: bench
+name: Benchmark agent
+description: Answers questions about orders, through a mock LLM.
+start:
+  nodes:
+    - id: reply
+      llm:
+        provider: openai-v1
+        endpoint: http://127.0.0.1:__MOCK_LLM_PORT__
+        model: mock
+      system_prompt: $/prompts/system.md
+      max_iterations: 4
+      stream: true
+      tools:
+        - name: lookup-order
+          description: |
+            Looks up one of the company's orders by its number. Only call this
+            tool with an order number the customer gave you.
+          tool:
+            type: template
+            templates:
+              - "Order {{order_number: string \"the order number given by the customer\"}} is {{status: string \"one of processing, shipped, delivered, returned\"}}, carrier tracking {{tracking: string \"a tracking code\"}}."
+              - "I found order {{order_number: string \"the order number given by the customer\"}}: status {{status: string \"one of processing, shipped, delivered, returned\"}}. Tracking: {{tracking: string \"a tracking code\"}}."
+variables:
+  - name: agent_name
+    type: string
+    placeholder: Name of the agent
+    value: Pupo
+  - name: company_name
+    type: string
+    placeholder: The company
+    value: Aurora Gear
+  - name: contact_email
+    type: string
+    placeholder: Where people answer
+    value: hola@example.com
+  - name: opening_hours
+    type: string
+    placeholder: When people answer
+    value: Monday to Friday, 09:00–18:00

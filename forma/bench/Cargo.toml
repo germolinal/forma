@@ -1,0 +1,29 @@
+[package]
+name = "forma-bench"
+version = "0.2.0"
+edition = "2024"
+publish = false
+description = "A mock LLM and a load generator, to measure Forma itself"
+
+[[bin]]
+name = "mock-llm"
+path = "src/bin/mock_llm.rs"
+
+[[bin]]
+name = "forma-load"
+path = "src/bin/forma_load.rs"
+
+[dependencies]
+async-stream = { workspace = true }
+axum = "0.8"
+bytes = { workspace = true }
+chrono = { workspace = true }
+clap = { version = "4.5", features = ["derive", "env"] }
+futures = { workspace = true }
+mongodb = "3.9"
+protocols = { path = "../protocols" }
+reqwest = { workspace = true }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }

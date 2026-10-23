@@ -1,0 +1,6 @@
+# build output (the site, and the docs copied into it by build.sh)
+dist/
+# generated types
+.astro/
+node_modules/
+.DS_Store

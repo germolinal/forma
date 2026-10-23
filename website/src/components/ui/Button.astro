@@ -1,0 +1,41 @@
+---
+import {
+  buttonVariants,
+  type ButtonVariant,
+  type ButtonSize,
+} from "./variants";
+import { cn } from "../../lib/utils";
+
+interface Props {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Renders an anchor when present, a button otherwise. */
+  href?: string;
+  type?: "button" | "submit" | "reset";
+  class?: string;
+  [key: string]: unknown;
+}
+
+const {
+  variant,
+  size,
+  href,
+  type = "button",
+  class: className,
+  ...rest
+} = Astro.props;
+
+const classes = cn(buttonVariants({ variant, size }), className);
+---
+
+{
+  href ? (
+    <a href={href} class={classes} {...rest}>
+      <slot />
+    </a>
+  ) : (
+    <button type={type} class={classes} {...rest}>
+      <slot />
+    </button>
+  )
+}

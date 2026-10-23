@@ -1,0 +1,44 @@
+---
+const items = [
+  {
+    title: "Guarantees in code, not in prompts",
+    body: "Role-based access to tools and human approval gates are enforced by the runtime. A prompt can't talk its way past them.",
+  },
+  {
+    title: "Evaluations built in",
+    body: "Attach datasets and LLM-as-judge metrics to agents, workflows and nodes. forma eval fails when a score falls below what you require.",
+  },
+  {
+    title: "Stateless runtimes",
+    body: "Conversations live in a MongoDB-compatible database, so you can run as many instances as you need behind a load balancer.",
+  },
+  {
+    title: "Traces from day one",
+    body: "OpenTelemetry with OpenInference conventions. Send traces to Phoenix or to the observability stack you already run.",
+  },
+  {
+    title: "Any model provider",
+    body: "Ollama, OpenAI-compatible APIs, Groq and Vertex AI. Use a local model while you develop and a hosted one in production.",
+  },
+  {
+    title: "A CLI for the whole loop",
+    body: "Create, chat, trace and evaluate locally, with hot reloading while you edit prompts.",
+  },
+];
+---
+
+<section class="shell section border-t">
+  <h2 class="text-3xl font-semibold sm:text-4xl">What Forma does for you</h2>
+  <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {
+      items.map((item) => (
+        <article class="bg-card text-card-foreground rounded-xl border p-6">
+          <h3 class="text-lg font-semibold">{item.title}</h3>
+          <p class="text-muted-foreground mt-2 text-[0.95rem] leading-relaxed">
+            {item.body}
+          </p>
+        </article>
+      ))
+    }
+  </div>
+</section>

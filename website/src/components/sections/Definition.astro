@@ -1,0 +1,41 @@
+---
+/** An agent, as its author writes it. Taken from the docs' first tutorial. */
+const yaml = `id: dory
+name: Dory, a helpful assistant
+description: Helps you with your daily tasks.
+
+start:
+  nodes:
+    - id: reply
+      llm:
+        provider: ollama
+      system_prompt: $/prompts/agent_prompt.md`;
+
+// Keys in amber, file references ($/...) in green. Enough for a placeholder;
+// a real highlighter (Shiki ships with Astro) when there is more code to show.
+const highlighted = yaml
+  .split("\n")
+  .map((line) =>
+    line
+      .replace(/^(\s*-?\s*)([\w-]+):/, '$1<span class="text-accent">$2</span>:')
+      .replace(/(\$\/\S+)$/, '<span class="text-[#9fd3b8]">$1</span>'),
+  )
+  .join("\n");
+---
+
+<section class="shell section grid items-center gap-10 border-t lg:grid-cols-2">
+  <div>
+    <h2 class="text-3xl font-semibold sm:text-4xl">
+      An agent is a file you can review
+    </h2>
+    <p class="text-muted-foreground mt-4 leading-relaxed">
+      Prompts live in plain text files, next to the YAML that wires them
+      together. Anyone on the team can read, diff and review an agent.
+      <code class="code-inline">forma expand -c</code> rejects unknown fields and
+      broken references before you spend a token.
+    </p>
+  </div>
+  <pre
+    class="bg-panel text-panel-foreground overflow-x-auto rounded-xl p-6 font-mono text-sm leading-7"
+    aria-label="Example agent.yaml"><code set:html={highlighted} /></pre>
+</section>

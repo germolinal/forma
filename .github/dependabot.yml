@@ -1,0 +1,30 @@
+# Weekly updates, grouped so each ecosystem opens one pull request for its
+# minor and patch updates. Security updates (when enabled in the repository's
+# settings) come on their own, as soon as an advisory is published.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /forma
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

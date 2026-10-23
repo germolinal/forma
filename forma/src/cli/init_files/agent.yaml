@@ -1,0 +1,34 @@
+id: dory
+name: Dory, a helpful assistant
+description: A helpful assistant that helps you with your daily tasks.
+
+start:
+  nodes:
+    # A node's id becomes the key of the agent's output — {"reply": "..."} —
+    # and that output is what an evaluation's judge reads. Name it for a reader.
+    - id: reply
+      llm:
+        # Defaults to llama3.1:8b, on http://127.0.0.1:11434
+        # This is not a great model, but can run on a laptop
+        # and help get things fast. Consider switching to a
+        # different provider.
+        provider: ollama
+      # '$' paths are resolved relative to THIS file, and are not recursive:
+      # the markdown below is read verbatim, so a '$other.md' inside it would
+      # be literal text.
+      system_prompt: $/prompts/agent_prompt.md
+
+# Evaluations. Run them with `forma eval -a -e "my first experiment"`;
+# every answer, score and explanation lands in ./evals/results/.
+evals:
+  # 'wanderer' is ./evals/data/wanderer.json. Regenerate it with
+  # `forma tester -f wanderer.yaml -n 5`, which replaces that file.
+  - dataset: wanderer
+    metrics:
+      # A metric's filename is its name in every report: 'politeness'.
+      - id: politeness
+        template: $../evals/metrics/politeness.md
+        # The model that grades the answer.
+        # Check nodes on start.nodes[0].llm above
+        judge:
+          provider: ollama

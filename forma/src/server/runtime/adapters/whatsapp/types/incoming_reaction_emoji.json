@@ -1,0 +1,42 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "872024278909394",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15551658695",
+              "phone_number_id": "912164528653259"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Namity Name"
+                },
+                "wa_id": "64272815246",
+                "country_code": "NZ"
+              }
+            ],
+            "messages": [
+              {
+                "from": "64272815246",
+                "id": "wamid.HBgLNjQyNzI4MTUyNDYVAgASGBQzQUNFOEFCQTI1NzYxNzIyQUIwOQA=",
+                "timestamp": "1770367773",
+                "from_logical_id": "265368933269581",
+                "type": "reaction",
+                "reaction": {
+                  "message_id": "wamid.HBgLNjQyNzI4MTUyNDYVAgARGBI3RUFFRkIyNUEwNEY3RDNBRjkA",
+                  "emoji": "❤️"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

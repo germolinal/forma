@@ -1,0 +1,25 @@
+# Runtime base, pinned by digest so every build of this file runs on the same
+# bytes. Bump it on purpose. The LABEL below records it in the image, which is
+# where cicd/lib/release-binaries.sh reads it from for self-hosted releases.
+ARG BASE_IMAGE=gcr.io/distroless/cc-debian12:latest@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa
+
+FROM rust:1.99.1-bookworm as build
+
+WORKDIR /app
+
+RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get upgrade -y
+
+COPY . .
+
+RUN cargo build --release --bin forma-manager --no-default-features --features api
+
+# Move into distroless
+FROM ${BASE_IMAGE}
+ARG BASE_IMAGE
+LABEL org.opencontainers.image.base.name="${BASE_IMAGE}"
+
+ARG PORT=8080
+EXPOSE ${PORT}
+
+COPY --from=build /app/target/release/forma-manager /app/forma-manager
+CMD ["/app/forma-manager"]

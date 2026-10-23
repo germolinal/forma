@@ -1,0 +1,5 @@
+.env
+.oauth.json
+forma-db
+evals/results
+.workspaces.json

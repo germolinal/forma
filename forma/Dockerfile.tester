@@ -1,0 +1,5 @@
+FROM rust:1.99.1-bookworm
+
+RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
+RUN rustup component add clippy rustfmt

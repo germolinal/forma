@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Forma">
+  <defs>
+    <linearGradient id="forma-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1B2433"/>
+      <stop offset="1" stop-color="#0E131C"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#forma-bg)"/>
+  <rect x="17" y="13" width="9" height="38" rx="4.5" fill="#F4F1EA"/>
+  <rect x="17" y="13" width="31" height="9" rx="4.5" fill="#F4F1EA"/>
+  <rect x="17" y="28.5" width="19" height="9" rx="4.5" fill="#F4F1EA"/>
+  <circle cx="44.5" cy="33" r="4.5" fill="#F2A93B"/>
+</svg>

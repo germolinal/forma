@@ -1,0 +1,47 @@
+# cargo deny: what Forma's dependencies may be. Run with
+#   cargo deny check bans licenses sources
+# (CI: .github/workflows/dependencies.yml). Vulnerabilities are cargo audit's
+# job, in the same workflow.
+
+[graph]
+all-features = true
+
+[advisories]
+# Checked by cargo audit; kept here so `cargo deny check` alone also works.
+ignore = []
+
+[licenses]
+# Permissive licences, plus MPL-2.0 (copyleft per file: fine to depend on;
+# changes to those files stay MPL). Anything else fails, and is either allowed
+# here on purpose or replaced. Revisit with Forma's own licence.
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "0BSD",
+  "Zlib",
+  "BSL-1.0",
+  "Unicode-3.0",
+  "CDLA-Permissive-2.0",
+  "CC0-1.0",
+  "MPL-2.0",
+]
+confidence-threshold = 0.9
+# Forma's own crates.
+private = { ignore = true }
+
+[bans]
+# Two versions of one crate are common in a tree this size; report, don't fail.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

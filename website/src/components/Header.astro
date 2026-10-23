@@ -1,0 +1,27 @@
+---
+import Wordmark from "./brand/Wordmark.astro";
+import { href, nav } from "../config/site";
+
+const home = Astro.url.pathname === href();
+---
+
+<header
+  class="bg-background/85 supports-backdrop-filter:bg-background/70 sticky top-0 z-40 border-b backdrop-blur"
+>
+  <div class="shell flex h-16 items-center justify-between gap-4">
+    <Wordmark href={home ? null : href()} />
+
+    <nav class="flex items-center gap-1" aria-label="Main">
+      {
+        nav.map((item) => (
+          <a
+            href={item.href}
+            class="text-muted-foreground hover:text-foreground hover:bg-secondary focus-visible:ring-ring/50 rounded-md px-2.5 py-2 text-sm font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-[3px] sm:px-3"
+          >
+            {item.label}
+          </a>
+        ))
+      }
+    </nav>
+  </div>
+</header>

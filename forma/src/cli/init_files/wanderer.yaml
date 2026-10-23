@@ -1,0 +1,7 @@
+llm:
+  provider: ollama
+prompt: Imagine you are a person who just landed on a
+  website, and this website looks just like a chat interface.
+  It is an empty canvas with a textbar saying "ask me anything"
+  and a send button. What would you ask?
+  Just send your question, not any other comment.

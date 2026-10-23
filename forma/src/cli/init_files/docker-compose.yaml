@@ -1,0 +1,9 @@
+services:
+  # Used for LLM Evaluation and observability.
+  phoenix:
+    # Using the 'latest' version. It is recommended to choose one when
+    # deploying.
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006" # The UI and the Rest API is at localhost:6006
+      - "4317:4317" # The OpenTelemetry endpoint is at localhost:4317

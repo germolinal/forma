@@ -1,0 +1,15 @@
+.env
+.vscode
+.zed
+.claude
+/target
+.DS_Store
+test-agent
+reference_docs
+cobertura.xml
+*.profraw
+cov.html
+forma-db
+.workspaces.json
+sandbox/__pycache__
+bench/results

@@ -1,0 +1,60 @@
+# Builds the website and the documentation on pull requests, with the
+# reference pages regenerated from the code's doc comments: a change to a doc
+# comment, to the docs or to the site that breaks the build fails here
+# (formatting and `astro check` included). Nothing is published: pages.yml
+# does that, from a v* tag.
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - "forma/**"
+      - "docs/**"
+      - "website/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  RUST_TOOLCHAIN: "1.99.1"
+  MDBOOK_VERSION: "0.4.52"
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    name: Build site and docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: forma
+          shared-key: docs
+          save-if: false
+      - uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: ${{ env.MDBOOK_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: website/.nvmrc
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Build
+        run: |
+          (cd website && npm ci)
+          website/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: website/dist
+          retention-days: 7

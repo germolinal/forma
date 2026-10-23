@@ -1,0 +1,20 @@
+[package]
+name = "derive"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[dependencies]
+syn = { version = "3.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+proc-macro-error = { version = "1.0" }
+
+[lib]
+proc-macro = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin_include)"] }

@@ -1,0 +1,87 @@
+# Publishes the website, with the documentation under docs/, to GitHub Pages.
+# Like everything Forma releases, it is published from a v* tag: the site, the
+# docs and their reference pages (generated from the code) all come from the
+# tag, so they describe what people can install.
+#
+# Run by hand, it publishes the latest v* tag again (e.g. after a failed run).
+#
+# Needs Settings → Pages → Source: "GitHub Actions".
+name: Pages
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  RUST_TOOLCHAIN: "1.99.1"
+  MDBOOK_VERSION: "0.4.52"
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Check out the release
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag=$GITHUB_REF_NAME
+          else
+            tag=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+            if [ -z "$tag" ]; then
+              echo "No v* tag to publish" >&2
+              exit 1
+            fi
+            git checkout "$tag"
+          fi
+          echo "Published $tag" >> "$GITHUB_STEP_SUMMARY"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: forma
+          shared-key: docs
+      - uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: ${{ env.MDBOOK_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: website/.nvmrc
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: Build
+        env:
+          SITE_URL: ${{ steps.pages.outputs.origin }}
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: |
+          (cd website && npm ci)
+          website/build.sh
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: website/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

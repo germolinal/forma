@@ -1,0 +1,131 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* ---------------------------------------------------------------------------
+ * Design tokens, named as shadcn names them, so its components fit if they are
+ * ever needed. The palette is the logo's: ink, paper and amber. Dark follows
+ * the device; there is no toggle.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  --background: #f7f5f0;
+  --foreground: #141922;
+  --card: #ffffff;
+  --card-foreground: #141922;
+  --primary: #141922;
+  --primary-foreground: #f7f5f0;
+  --secondary: #eeebe3;
+  --secondary-foreground: #141922;
+  --muted: #f0ede6;
+  --muted-foreground: #5b6575;
+  --accent: #f2a93b;
+  --accent-foreground: #141922;
+  /* Amber as text: --accent is too light on paper (2.0:1). */
+  --accent-text: #a8640c;
+  --panel: #141922;
+  --panel-foreground: #e9e5dc;
+  --border: #e2ded4;
+  --input: #e2ded4;
+  --ring: #d98a1c;
+  --radius: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0e131c;
+    --foreground: #ece8df;
+    --card: #151c28;
+    --card-foreground: #ece8df;
+    --primary: #f4f1ea;
+    --primary-foreground: #141922;
+    --secondary: #1c2533;
+    --secondary-foreground: #ece8df;
+    --muted: #1c2533;
+    --muted-foreground: #97a1b2;
+    --accent: #f2a93b;
+    --accent-foreground: #141922;
+    --accent-text: #f2a93b;
+    --panel: #0a0e15;
+    --panel-foreground: #e9e5dc;
+    --border: #253043;
+    --input: #253043;
+    --ring: #f2a93b;
+  }
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display:
+    "Space Grotesk Variable", "Inter Variable", ui-sans-serif, system-ui,
+    sans-serif;
+  --font-mono:
+    "JetBrains Mono Variable", ui-monospace, Menlo, Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-text: var(--accent-text);
+  --color-panel: var(--panel);
+  --color-panel-foreground: var(--panel-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight;
+  }
+  ::selection {
+    background-color: color-mix(in oklab, var(--accent) 35%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* One measure for every section. */
+@utility shell {
+  @apply mx-auto w-full max-w-6xl px-4 sm:px-8;
+}
+
+/* Vertical rhythm between top-level sections. */
+@utility section {
+  @apply py-16 sm:py-24;
+}
+
+/* Inline code in prose. */
+@utility code-inline {
+  @apply bg-foreground/7 rounded px-1.5 py-0.5 font-mono text-[0.85em] whitespace-nowrap;
+}

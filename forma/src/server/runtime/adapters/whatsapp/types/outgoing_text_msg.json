@@ -1,0 +1,10 @@
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": "<WHATSAPP_USER_PHONE_NUMBER>",
+  "type": "text",
+  "text": {
+    "preview_url": true,
+    "body": "<BODY_TEXT>"
+  }
+}

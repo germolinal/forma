@@ -1,0 +1,1839 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forma</title>
+    <!--
+      The chat UI that `forma dev` serves. It is a single dependency-free file so
+      that embedding it in the binary is one `include_str!` and building Forma
+      never needs a JavaScript toolchain. It talks the same SSE protocol as the
+      `sse` runtime (`/v1/init`, `/v1/chat`, `/v1/resume`), which is why
+      `forma dev` always serves that runtime regardless of `runtime.yaml`.
+    -->
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #18181b;
+        --muted: #71717a;
+        --border: #e4e4e7;
+        --surface: #f4f4f5;
+        --accent: #4f46e5;
+        --accent-fg: #ffffff;
+        --danger: #dc2626;
+        --danger-bg: #fef2f2;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0b0f;
+          --fg: #e4e4e7;
+          --muted: #a1a1aa;
+          --border: #27272a;
+          --surface: #17171b;
+          --accent: #6366f1;
+          --accent-fg: #ffffff;
+          --danger: #f87171;
+          --danger-bg: #2a1416;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          14px/1.55 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+      }
+
+      code,
+      pre {
+        font:
+          12px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+
+      /* ---- Header ---------------------------------------------------- */
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      header .brand {
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      header .agent {
+        color: var(--muted);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      header .spacer {
+        flex: 1;
+      }
+
+      header label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      header input {
+        font: inherit;
+        font-size: 13px;
+        width: 180px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+        border-radius: 8px;
+        padding: 4px 8px;
+      }
+
+      header input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        flex: 0 0 auto;
+      }
+
+      /* ---- Message log ----------------------------------------------- */
+
+      main {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        padding: 20px 16px;
+      }
+
+      .inner {
+        max-width: 780px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .empty {
+        color: var(--muted);
+        text-align: center;
+        padding: 80px 0;
+      }
+
+      /* Column so attachments stack under the bubble, still right-aligned. */
+      .msg.user {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+
+      .msg.user .bubble {
+        max-width: 80%;
+        padding: 8px 14px;
+        border-radius: 16px;
+        background: var(--accent);
+        color: var(--accent-fg);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .msg.assistant {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow-wrap: anywhere;
+      }
+
+      .msg.assistant > :first-child {
+        margin-top: 0;
+      }
+
+      .msg.assistant p {
+        margin: 0 0 8px;
+      }
+
+      .msg.assistant p:last-child {
+        margin-bottom: 0;
+      }
+
+      .msg.assistant h1,
+      .msg.assistant h2,
+      .msg.assistant h3,
+      .msg.assistant h4 {
+        margin: 12px 0 6px;
+        font-size: 1em;
+        font-weight: 600;
+      }
+
+      .msg.assistant ul,
+      .msg.assistant ol {
+        margin: 0 0 8px;
+        padding-left: 22px;
+      }
+
+      .msg.assistant a {
+        color: var(--accent);
+      }
+
+      pre {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        overflow-x: auto;
+        margin: 0 0 8px;
+      }
+
+      :not(pre) > code {
+        background: var(--surface);
+        border-radius: 4px;
+        padding: 1px 4px;
+      }
+
+      /* ---- Tool calls, reasoning ------------------------------------- */
+
+      details.block {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 6px 10px;
+      }
+
+      details.block > summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 12px;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      details.block > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      details.block > summary::before {
+        content: "▸";
+        font-size: 10px;
+      }
+
+      details.block[open] > summary::before {
+        content: "▾";
+      }
+
+      details.block .name {
+        color: var(--fg);
+        font-weight: 500;
+      }
+
+      details.block .body {
+        margin-top: 8px;
+      }
+
+      details.block .body pre {
+        margin-bottom: 6px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 3px;
+      }
+
+      .reasoning-text {
+        white-space: pre-wrap;
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      /* ---- Human in the loop ----------------------------------------- */
+
+      .feedback {
+        border: 1px solid var(--accent);
+        border-radius: 10px;
+        padding: 12px;
+      }
+
+      .feedback h4 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .feedback textarea {
+        width: 100%;
+        min-height: 88px;
+        resize: vertical;
+        background: var(--bg);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px;
+        font:
+          12px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+
+      .feedback .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .resolved {
+        color: var(--muted);
+        font-size: 12px;
+        font-style: italic;
+      }
+
+      /* ---- References, usage ----------------------------------------- */
+
+      .refs {
+        border-top: 1px solid var(--border);
+        padding-top: 8px;
+        font-size: 12px;
+      }
+
+      .refs .ref {
+        margin-bottom: 6px;
+      }
+
+      .refs .ref a,
+      .refs .ref .title {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      .refs .snippet {
+        color: var(--muted);
+      }
+
+      .usage {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      /* ---- Status ----------------------------------------------------- */
+
+      .thinking {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .thinking .bounce {
+        display: inline-flex;
+        gap: 3px;
+      }
+
+      .thinking .bounce i {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: bounce 1s infinite;
+      }
+
+      .thinking .bounce i:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+
+      .thinking .bounce i:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+
+      @keyframes bounce {
+        0%,
+        60%,
+        100% {
+          transform: translateY(0);
+        }
+        30% {
+          transform: translateY(-4px);
+        }
+      }
+
+      .error {
+        border: 1px solid var(--danger);
+        background: var(--danger-bg);
+        color: var(--danger);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 13px;
+        white-space: pre-wrap;
+      }
+
+      /* ---- Composer ---------------------------------------------------- */
+
+      footer {
+        flex: 0 0 auto;
+        border-top: 1px solid var(--border);
+        padding: 12px 16px;
+      }
+
+      .composer {
+        max-width: 780px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 8px 10px;
+        background: var(--bg);
+      }
+
+      .composer:focus-within {
+        border-color: var(--accent);
+      }
+
+      .composer-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+      }
+
+      .composer textarea {
+        flex: 1;
+        border: 0;
+        outline: none;
+        resize: none;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        max-height: 200px;
+      }
+
+      button {
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+        border-radius: 8px;
+        padding: 5px 12px;
+        cursor: pointer;
+      }
+
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-fg);
+      }
+
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .composer button.primary {
+        border-radius: 8px;
+        padding: 5px 14px;
+      }
+
+      /* ---- Attachments -------------------------------------------------- */
+
+      button.icon {
+        padding: 5px 9px;
+        line-height: 1.2;
+      }
+
+      button.icon.recording {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
+      /* Queued attachments, shown above the input until the message is sent. */
+      .attachments {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .attachments:empty {
+        display: none;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 240px;
+        padding: 4px 6px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        font-size: 12px;
+      }
+
+      .chip img {
+        display: block;
+        width: 28px;
+        height: 28px;
+        border-radius: 4px;
+        object-fit: cover;
+      }
+
+      .chip .name {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .chip .size {
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .chip button {
+        padding: 0 2px;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1;
+      }
+
+      .chip button:hover {
+        color: var(--fg);
+      }
+
+      /* Documents on a message, whether the reader sent them or the agent
+         produced them. */
+      .atts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+      }
+
+      .atts img {
+        display: block;
+        max-width: min(320px, 100%);
+        max-height: 320px;
+        border-radius: 10px;
+      }
+
+      /* An image preview is wrapped in a download link; the zeroed line-height
+         drops the descender gap that would otherwise sit under it. */
+      .atts > a {
+        display: block;
+        line-height: 0;
+      }
+
+      .atts audio {
+        height: 36px;
+        max-width: 100%;
+      }
+
+      .atts .file {
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+        font-size: 12px;
+      }
+
+      .atts .file a {
+        color: inherit;
+      }
+
+      /* The reader's own messages hang off the right edge. */
+      .msg.user .atts {
+        justify-content: flex-end;
+      }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <span class="dot"></span>
+      <span class="brand">Forma</span>
+      <span class="agent" id="agent-name"></span>
+      <span class="spacer"></span>
+      <label
+        title="Sent in X-User-Roles, comma-separated. Tools with 'just_for' are only offered to these roles."
+      >
+        Roles
+        <input id="roles" type="text" autocomplete="off" spellcheck="false" />
+      </label>
+      <button id="new-chat" type="button">New chat</button>
+    </header>
+
+    <main id="log">
+      <div class="inner" id="inner"></div>
+    </main>
+
+    <footer>
+      <div class="composer">
+        <div class="attachments" id="attachments"></div>
+        <div class="composer-row">
+          <input id="file-input" type="file" multiple hidden />
+          <button
+            id="attach"
+            class="icon"
+            type="button"
+            title="Attach a file"
+            aria-label="Attach a file"
+            disabled
+          >
+            📎
+          </button>
+          <button
+            id="mic"
+            class="icon"
+            type="button"
+            title="Record audio"
+            aria-label="Record audio"
+            disabled
+          >
+            🎤
+          </button>
+          <textarea
+            id="input"
+            rows="1"
+            placeholder="Connecting…"
+            disabled
+            autocomplete="off"
+          ></textarea>
+          <button id="send" class="primary" type="button" disabled>Send</button>
+        </div>
+      </div>
+    </footer>
+
+    <!--forma-config-->
+    <script>
+      (function () {
+        "use strict";
+
+        // `forma dev` replaces the placeholder comment above with the real
+        // values; the fallbacks keep this file usable when opened on its own.
+        var CFG = window.__FORMA_CONFIG__ || {};
+        var USER_ID = CFG.user_id || "forma-user";
+        var AGENT_ID = CFG.agent_id || "";
+        // The roles the agent's `just_for` lists name, as a hint for the
+        // roles field. Only a hint: hot-reload can add others.
+        var KNOWN_ROLES = CFG.roles || [];
+
+        // Mirrors forma/typescript-sdk/constants.ts.
+        var INIT_PATH = "/v1/init";
+        var CHAT_PATH = "/v1/chat";
+        var RESUME_PATH = "/v1/resume";
+        var USER_ID_HEADER = "x-user-id";
+        var SESSION_ID_HEADER = "x-session-id";
+        var USER_ROLES_HEADER = "x-user-roles";
+
+        // Mirrors `default_max_request_mb` on the SSE adapter. Checking here
+        // turns a 413 with no explanation into a message naming the file.
+        var MAX_REQUEST_BYTES = 25 * 1024 * 1024;
+
+        // ---- State ----------------------------------------------------
+        var sessionId = null;
+        var messages = [];
+        var currentMsg = null;
+        var isLoading = false;
+        var currentStep = null;
+        var resuming = false;
+        var chatError = null;
+
+        // Part indices for the ids the stream reuses across deltas.
+        var textIdx = new Map();
+        var reasonIdx = new Map();
+        var toolIdx = new Map();
+        // Which disclosure widgets the reader opened. Re-rendering a message
+        // rebuilds its subtree, so open state has to live outside the DOM.
+        var openBlocks = new Set();
+
+        // Files and recordings queued for the next message, each held as a
+        // data URL because that is the shape both the `file` and `image_url`
+        // content parts want on the wire.
+        var attachments = [];
+        var recorder = null;
+
+        var innerEl = document.getElementById("inner");
+        var logEl = document.getElementById("log");
+        var inputEl = document.getElementById("input");
+        var sendEl = document.getElementById("send");
+        var attachEl = document.getElementById("attach");
+        var micEl = document.getElementById("mic");
+        var fileInputEl = document.getElementById("file-input");
+        var attachmentsEl = document.getElementById("attachments");
+        var errorEl = null;
+        var pendingEl = null;
+
+        if (AGENT_ID) {
+          document.getElementById("agent-name").textContent = AGENT_ID;
+          document.title = AGENT_ID + " — Forma";
+        }
+
+        // Roles are read on every request, so changing them takes effect
+        // on the next message, with no new chat needed.
+        var rolesEl = document.getElementById("roles");
+        var ROLES_KEY = "forma-roles:" + AGENT_ID;
+        rolesEl.placeholder = KNOWN_ROLES.length
+          ? KNOWN_ROLES.join(", ")
+          : "none";
+        try {
+          rolesEl.value = localStorage.getItem(ROLES_KEY) || "";
+        } catch (e) {}
+        rolesEl.addEventListener("input", function () {
+          try {
+            localStorage.setItem(ROLES_KEY, rolesEl.value);
+          } catch (e) {}
+        });
+
+        // ---- Rendering helpers -----------------------------------------
+
+        var ESCAPES = {
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        };
+
+        function esc(s) {
+          return String(s).replace(/[&<>"']/g, function (c) {
+            return ESCAPES[c];
+          });
+        }
+
+        /** `crypto.randomUUID` is missing when the page is not a secure origin. */
+        function uuid() {
+          if (crypto.randomUUID) return crypto.randomUUID();
+          return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+            /[xy]/g,
+            function (c) {
+              var r = (Math.random() * 16) | 0;
+              return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+            },
+          );
+        }
+
+        function json(value) {
+          if (value === null || value === undefined) return "";
+          if (typeof value === "string") return value;
+          try {
+            return JSON.stringify(value, null, 2);
+          } catch (e) {
+            return String(value);
+          }
+        }
+
+        /**
+         * A small subset of Markdown: fenced and inline code, bold, italics,
+         * links, headings and lists. Everything is HTML-escaped before any tag
+         * is introduced, so model output can never inject markup.
+         */
+        function markdown(src) {
+          var blocks = [];
+          var text = String(src).replace(
+            /```[\w-]*\n?([\s\S]*?)```/g,
+            function (_, code) {
+              blocks.push(
+                "<pre><code>" +
+                  esc(code.replace(/\n+$/, "")) +
+                  "</code></pre>",
+              );
+              return "\u0000" + (blocks.length - 1) + "\u0000";
+            },
+          );
+
+          text = esc(text)
+            .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+            .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+            .replace(/(^|[^*\w])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+            .replace(
+              /\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+              '<a href="$2" target="_blank" rel="noreferrer">$1</a>',
+            );
+
+          var out = [];
+          var para = [];
+          var list = null;
+
+          function flushPara() {
+            if (para.length) {
+              out.push("<p>" + para.join("<br>") + "</p>");
+              para = [];
+            }
+          }
+
+          function flushList() {
+            if (list) {
+              out.push("</" + list + ">");
+              list = null;
+            }
+          }
+
+          text.split("\n").forEach(function (line) {
+            var t = line.trim();
+            if (!t) {
+              flushPara();
+              flushList();
+              return;
+            }
+
+            var fence = /^\u0000(\d+)\u0000$/.exec(t);
+            if (fence) {
+              flushPara();
+              flushList();
+              out.push(blocks[Number(fence[1])]);
+              return;
+            }
+
+            var heading = /^(#{1,6})\s+(.*)$/.exec(t);
+            if (heading) {
+              flushPara();
+              flushList();
+              var level = Math.min(heading[1].length + 2, 6);
+              out.push("<h" + level + ">" + heading[2] + "</h" + level + ">");
+              return;
+            }
+
+            var bullet = /^[-*+]\s+(.*)$/.exec(t);
+            var numbered = /^\d+[.)]\s+(.*)$/.exec(t);
+            if (bullet || numbered) {
+              flushPara();
+              var want = bullet ? "ul" : "ol";
+              if (list !== want) {
+                flushList();
+                out.push("<" + want + ">");
+                list = want;
+              }
+              out.push("<li>" + (bullet ? bullet[1] : numbered[1]) + "</li>");
+              return;
+            }
+
+            flushList();
+            para.push(t);
+          });
+
+          flushPara();
+          flushList();
+          return out.join("");
+        }
+
+        /** Turns a step id like `find-flights` into `Find flights`. */
+        function stepLabel(id) {
+          var s = String(id).replace(/[-_]/g, " ").trim();
+          return s.charAt(0).toUpperCase() + s.slice(1);
+        }
+
+        function toolBody(part, msg) {
+          var html = "";
+          if (part.input !== null && part.input !== undefined) {
+            html +=
+              '<div class="label">Input</div><pre>' +
+              esc(json(part.input)) +
+              "</pre>";
+          }
+          var output = msg.content.find(function (p) {
+            return (
+              p.type === "tool_output" && p.tool_call_id === part.tool_call_id
+            );
+          });
+          if (output) {
+            html +=
+              '<div class="label">Output</div><pre>' +
+              esc(json(output.output)) +
+              "</pre>";
+          } else {
+            html += '<div class="label">Running…</div>';
+          }
+          return html;
+        }
+
+        function partHtml(part, msg) {
+          switch (part.type) {
+            case "text":
+              return markdown(part.text);
+
+            // Documents the agent produced, carried as the same content parts
+            // the reader sends in.
+            case "image_url":
+            case "file":
+            case "input_audio":
+              return '<div class="atts">' + attachmentHtml(part) + "</div>";
+
+            case "reasoning":
+              return (
+                '<details class="block" data-key="' +
+                esc(part.key) +
+                '"' +
+                (openBlocks.has(part.key) ? " open" : "") +
+                "><summary>Reasoning</summary>" +
+                '<div class="body reasoning-text">' +
+                esc(part.text) +
+                "</div></details>"
+              );
+
+            case "tool_input":
+              return (
+                '<details class="block" data-key="' +
+                esc(part.tool_call_id) +
+                '"' +
+                (openBlocks.has(part.tool_call_id) ? " open" : "") +
+                "><summary>Tool <span class=\"name\">" +
+                esc(part.tool_name) +
+                "</span>" +
+                (part.tool_kind ? " · " + esc(part.tool_kind) : "") +
+                '</summary><div class="body">' +
+                toolBody(part, msg) +
+                "</div></details>"
+              );
+
+            case "feedback_request":
+              if (part.state !== "pending") {
+                return (
+                  '<p class="resolved">' +
+                  esc(part.tool_name) +
+                  ": " +
+                  esc(part.state) +
+                  "</p>"
+                );
+              }
+              // The arguments are editable because the resume endpoint accepts
+              // replacements, which is the quickest way to probe a tool call.
+              return (
+                '<div class="feedback" data-call="' +
+                esc(part.tool_call_id) +
+                '"><h4>Approve call to <code>' +
+                esc(part.tool_name) +
+                "</code>?</h4>" +
+                "<textarea spellcheck=\"false\">" +
+                esc(json(part.arguments) || "{}") +
+                "</textarea>" +
+                '<div class="actions">' +
+                '<button class="primary" data-act="approve" type="button">Approve</button>' +
+                '<button data-act="reject" type="button">Reject</button>' +
+                "</div></div>"
+              );
+
+            // `tool_output` is drawn inside its `tool_input`, and `start_step`
+            // only drives the status line.
+            default:
+              return "";
+          }
+        }
+
+        function referencesHtml(msg) {
+          if (!msg.references || !msg.references.length) return "";
+          var items = msg.references
+            .map(function (r) {
+              var isLink = /^https?:/.test(r.url || "");
+              var head = isLink
+                ? '<a href="' +
+                  esc(r.url) +
+                  '" target="_blank" rel="noreferrer">' +
+                  esc(r.title) +
+                  "</a>"
+                : '<span class="title">' + esc(r.title) + "</span>";
+              // Snippets arrive with <b> hit highlighting, which is dropped
+              // rather than trusted.
+              var snippet = r.snippet
+                ? '<div class="snippet">' +
+                  esc(r.snippet.replace(/<\/?b>/g, "")) +
+                  "</div>"
+                : "";
+              return '<div class="ref">' + head + snippet + "</div>";
+            })
+            .join("");
+
+          var score =
+            typeof msg.groundingScore === "number"
+              ? '<div class="usage">Grounding: ' +
+                Math.round(msg.groundingScore * 100) +
+                "%</div>"
+              : "";
+          return '<div class="refs">' + items + score + "</div>";
+        }
+
+        function usageHtml(msg) {
+          if (!msg.usage || !msg.usage.length) return "";
+          var parts = msg.usage.map(function (u) {
+            return (
+              esc(u.model || u.provider || "model") +
+              ": " +
+              (u.input_tokens || 0) +
+              " in / " +
+              (u.output_tokens || 0) +
+              " out"
+            );
+          });
+          return '<div class="usage">' + parts.join(" · ") + "</div>";
+        }
+
+        function thinkingHtml(msg) {
+          if (!isLoading || msg !== messages[messages.length - 1]) return "";
+          var step = currentStep
+            ? "<span>" + esc(stepLabel(currentStep)) + "…</span>"
+            : "";
+          return (
+            '<div class="thinking"><span class="bounce"><i></i><i></i><i></i></span>' +
+            step +
+            "</div>"
+          );
+        }
+
+        function renderMsg(msg) {
+          if (msg.role === "user") {
+            var text = msg.content
+              .filter(function (p) {
+                return p.type === "text";
+              })
+              .map(function (p) {
+                return p.text;
+              })
+              .join("");
+            var atts = msg.content
+              .map(attachmentHtml)
+              .filter(Boolean)
+              .join("");
+
+            msg.el.innerHTML =
+              (text ? '<div class="bubble">' + esc(text) + "</div>" : "") +
+              (atts ? '<div class="atts">' + atts + "</div>" : "");
+            return;
+          }
+
+          msg.el.innerHTML =
+            msg.content
+              .map(function (p) {
+                return partHtml(p, msg);
+              })
+              .filter(Boolean)
+              .join("") +
+            referencesHtml(msg) +
+            usageHtml(msg) +
+            thinkingHtml(msg);
+        }
+
+        function appendMsg(msg) {
+          msg.el = document.createElement("div");
+          msg.el.className = "msg " + msg.role;
+          innerEl.appendChild(msg.el);
+          messages.push(msg);
+          renderMsg(msg);
+          scrollToBottom(true);
+        }
+
+        /** Only chases the bottom when the reader is already there. */
+        function scrollToBottom(force) {
+          var slack =
+            logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight;
+          if (force || slack < 80) logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        /**
+         * The per-message indicator only exists once the agent has opened its
+         * reply, so the wait between sending and the first event gets a
+         * free-standing one.
+         */
+        function syncPendingRow() {
+          var last = messages[messages.length - 1];
+          var show = isLoading && (!last || last.role === "user");
+          if (show && !pendingEl) {
+            pendingEl = document.createElement("div");
+            pendingEl.className = "thinking";
+            pendingEl.innerHTML =
+              '<span class="bounce"><i></i><i></i><i></i></span>';
+            innerEl.appendChild(pendingEl);
+            scrollToBottom(true);
+          } else if (!show && pendingEl) {
+            pendingEl.remove();
+            pendingEl = null;
+          }
+        }
+
+        function update() {
+          if (currentMsg) {
+            var near =
+              logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 80;
+            renderMsg(currentMsg);
+            if (near) logEl.scrollTop = logEl.scrollHeight;
+          }
+          syncPendingRow();
+          syncComposer();
+        }
+
+        function showError(message) {
+          chatError = message;
+          if (errorEl) errorEl.remove();
+          errorEl = null;
+          if (!message) return;
+          errorEl = document.createElement("div");
+          errorEl.className = "error";
+          errorEl.textContent = message;
+          innerEl.appendChild(errorEl);
+          scrollToBottom(true);
+        }
+
+        function showEmptyState() {
+          innerEl.innerHTML =
+            '<div class="empty">Send a message to start chatting.</div>';
+        }
+
+        function syncComposer() {
+          var ready = Boolean(sessionId) && !isLoading;
+          var recording = Boolean(recorder);
+          inputEl.disabled = !ready;
+          attachEl.disabled = !ready || recording;
+          micEl.disabled = !ready;
+          // A message may be attachments alone, so text is not required.
+          sendEl.disabled =
+            !ready || recording || (!inputEl.value.trim() && !attachments.length);
+          inputEl.placeholder = sessionId ? "Message…" : "Connecting…";
+        }
+
+        // ---- Attachments -------------------------------------------------
+
+        /**
+         * Reads a file as a data URL, which carries the media type alongside
+         * the payload and so saves tracking the two separately.
+         */
+        function readDataUrl(blob) {
+          return new Promise(function (resolve, reject) {
+            var reader = new FileReader();
+            reader.onload = function () {
+              resolve(String(reader.result));
+            };
+            reader.onerror = function () {
+              reject(reader.error);
+            };
+            reader.readAsDataURL(blob);
+          });
+        }
+
+        function humanSize(bytes) {
+          if (bytes < 1024) return bytes + " B";
+          if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+          return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+        }
+
+        /** The data URL's own media type, which beats guessing from a suffix. */
+        function mimeOf(dataUrl) {
+          var m = /^data:([^;,]*)/.exec(dataUrl);
+          return m ? m[1] : "";
+        }
+
+        /**
+         * `input_audio` names its format with an enum rather than a media
+         * type, so a recording only goes that way when the browser handed us
+         * a container the enum can actually name. Everything else travels as
+         * a `file`, whose data URL states the type exactly.
+         */
+        var AUDIO_FORMATS = {
+          "audio/wav": "wav",
+          "audio/wave": "wav",
+          "audio/x-wav": "wav",
+          "audio/mpeg": "mp3",
+          "audio/mp3": "mp3",
+          "audio/flac": "flac",
+          "audio/ogg": "opus",
+        };
+
+        /** Builds the content part the agent receives for one attachment. */
+        function attachmentPart(att) {
+          var mime = mimeOf(att.dataUrl);
+
+          if (mime.indexOf("image/") === 0) {
+            return { type: "image_url", image_url: { url: att.dataUrl } };
+          }
+
+          var format = AUDIO_FORMATS[mime];
+          if (format) {
+            return {
+              type: "input_audio",
+              input_audio: {
+                // This part carries bare base64, not the whole data URL.
+                data: att.dataUrl.slice(att.dataUrl.indexOf(",") + 1),
+                format: format,
+              },
+            };
+          }
+
+          return {
+            type: "file",
+            file: { file_data: att.dataUrl, filename: att.name },
+          };
+        }
+
+        /** Renders one attachment as it appears on an already-sent message. */
+        function attachmentHtml(part) {
+          if (part.type === "image_url") {
+            return '<img src="' + esc(part.image_url.url) + '" alt="" />';
+          }
+          if (part.type === "input_audio") {
+            var format = part.input_audio.format;
+            var mime =
+              format === "mp3"
+                ? "audio/mpeg"
+                : format === "opus"
+                  ? "audio/ogg"
+                  : "audio/" + format;
+            return (
+              '<audio controls src="data:' +
+              esc(mime) +
+              ";base64," +
+              esc(part.input_audio.data) +
+              '"></audio>'
+            );
+          }
+          if (part.type === "file") {
+            var name = part.file.filename || "file";
+            var href = part.file.file_data;
+
+            // A generated picture arrives as a `file` part, not an
+            // `image_url` one, so the media type decides how to draw it
+            // rather than which kind of part happened to carry it. The link
+            // wrapper keeps it saveable, since a data URL cannot be opened
+            // as a top-level navigation.
+            if (href && mimeOf(href).indexOf("image/") === 0) {
+              return (
+                '<a href="' +
+                esc(href) +
+                '" download="' +
+                esc(name) +
+                '" title="' +
+                esc(name) +
+                '"><img src="' +
+                esc(href) +
+                '" alt="' +
+                esc(name) +
+                '" /></a>'
+              );
+            }
+
+            // A document the agent produced is worth being able to keep, and
+            // a data URL is already a valid download target.
+            return (
+              '<span class="file">' +
+              (href
+                ? '<a href="' +
+                  esc(href) +
+                  '" download="' +
+                  esc(name) +
+                  '">' +
+                  esc(name) +
+                  "</a>"
+                : esc(name)) +
+              "</span>"
+            );
+          }
+          return "";
+        }
+
+        function renderAttachments() {
+          attachmentsEl.innerHTML = attachments
+            .map(function (att) {
+              var preview =
+                mimeOf(att.dataUrl).indexOf("image/") === 0
+                  ? '<img src="' + esc(att.dataUrl) + '" alt="" />'
+                  : "";
+              return (
+                '<span class="chip" data-id="' +
+                esc(att.id) +
+                '">' +
+                preview +
+                '<span class="name">' +
+                esc(att.name) +
+                "</span>" +
+                '<span class="size">' +
+                esc(humanSize(att.size)) +
+                "</span>" +
+                '<button type="button" title="Remove" aria-label="Remove ' +
+                esc(att.name) +
+                '">×</button></span>'
+              );
+            })
+            .join("");
+        }
+
+        /** What the queue costs on the wire, base64 inflation included. */
+        function attachedBytes() {
+          return attachments.reduce(function (total, att) {
+            return total + att.dataUrl.length;
+          }, 0);
+        }
+
+        async function addFiles(files) {
+          for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            try {
+              var dataUrl = await readDataUrl(file);
+              attachments.push({
+                id: uuid(),
+                name: file.name || "attachment",
+                size: file.size,
+                dataUrl: dataUrl,
+              });
+            } catch (e) {
+              showError("Could not read " + (file.name || "the file") + ".");
+            }
+          }
+
+          if (attachedBytes() > MAX_REQUEST_BYTES) {
+            showError(
+              "Attachments are too large; the limit is " +
+                humanSize(MAX_REQUEST_BYTES) +
+                " per message.",
+            );
+          }
+
+          renderAttachments();
+          syncComposer();
+        }
+
+        function audioExtension(mime) {
+          var subtype = (mime.split(";")[0].split("/")[1] || "webm").toLowerCase();
+          if (subtype === "mpeg") return "mp3";
+          if (subtype === "mp4" || subtype === "x-m4a") return "m4a";
+          return subtype;
+        }
+
+        /**
+         * Records into whichever container the browser prefers. The blob's own
+         * type is what reaches the agent, so nothing is assumed about codecs
+         * here — Chrome gives WebM, Safari gives MP4, and both are described
+         * accurately by the data URL that results.
+         */
+        async function toggleRecording() {
+          if (recorder) {
+            recorder.stop();
+            return;
+          }
+
+          if (!navigator.mediaDevices || !window.MediaRecorder) {
+            showError("This browser cannot record audio.");
+            return;
+          }
+
+          var stream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          } catch (e) {
+            showError(
+              "Could not start recording: " +
+                (e instanceof Error ? e.message : String(e)),
+            );
+            return;
+          }
+
+          var chunks = [];
+          recorder = new MediaRecorder(stream);
+
+          recorder.addEventListener("dataavailable", function (e) {
+            if (e.data && e.data.size) chunks.push(e.data);
+          });
+
+          recorder.addEventListener("stop", function () {
+            // Stopping the tracks is what clears the browser's recording
+            // indicator; without it the tab looks like it is still listening.
+            stream.getTracks().forEach(function (track) {
+              track.stop();
+            });
+            recorder = null;
+            micEl.classList.remove("recording");
+            micEl.title = "Record audio";
+
+            var type = chunks.length ? chunks[0].type : "audio/webm";
+            var blob = new Blob(chunks, { type: type });
+            if (blob.size) {
+              var name = "recording-" + Date.now() + "." + audioExtension(type);
+              addFiles([new File([blob], name, { type: type })]);
+            }
+            syncComposer();
+          });
+
+          recorder.start();
+          micEl.classList.add("recording");
+          micEl.title = "Stop recording";
+          syncComposer();
+        }
+
+        // ---- Transport ---------------------------------------------------
+
+        function headers(extra) {
+          var h = {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          };
+          h[USER_ID_HEADER] = USER_ID;
+          if (sessionId) h[SESSION_ID_HEADER] = sessionId;
+          var roles = rolesEl.value.trim();
+          if (roles) h[USER_ROLES_HEADER] = roles;
+          return Object.assign(h, extra || {});
+        }
+
+        /** Yields the parsed `data:` payload of each SSE frame. */
+        async function* sse(path, body) {
+          var response = await fetch(path, {
+            method: "POST",
+            headers: headers(),
+            body: JSON.stringify(body),
+          });
+          if (!response.ok) {
+            throw new Error(
+              (await response.text()) || "request failed: " + response.status,
+            );
+          }
+
+          var reader = response.body.getReader();
+          var decoder = new TextDecoder();
+          var buffer = "";
+
+          while (true) {
+            var chunk = await reader.read();
+            if (chunk.done) break;
+            buffer += decoder.decode(chunk.value, { stream: true });
+            var frames = buffer.split("\n\n");
+            buffer = frames.pop();
+            for (var i = 0; i < frames.length; i++) {
+              var line = frames[i].split("\n").find(function (l) {
+                return l.indexOf("data:") === 0;
+              });
+              if (!line) continue;
+              try {
+                yield JSON.parse(line.slice("data:".length).trim());
+              } catch (e) {
+                // A malformed frame is worth surfacing but not worth
+                // abandoning the rest of the stream for.
+                console.warn("could not parse SSE frame", line, e);
+              }
+            }
+          }
+        }
+
+        // ---- Stream processing --------------------------------------------
+
+        /**
+         * Applies one event to `currentMsg`. Returns true when the turn is over
+         * for now, which happens on `finish`, on an error, and when the agent
+         * pauses for human approval.
+         */
+        function handleEvent(ev, isResuming) {
+          switch (ev.type) {
+            case "start":
+              if (isResuming && currentMsg) {
+                // The resumed turn continues the message already on screen, so
+                // its parts are kept and only the indices are reset.
+                currentMsg.id = ev.message_id;
+              } else {
+                currentMsg = {
+                  id: ev.message_id,
+                  role: "assistant",
+                  content: [],
+                  references: [],
+                };
+                appendMsg(currentMsg);
+              }
+              textIdx.clear();
+              reasonIdx.clear();
+              toolIdx.clear();
+              return false;
+
+            case "text_start":
+              if (!currentMsg) return false;
+              textIdx.set(ev.id, currentMsg.content.length);
+              currentMsg.content.push({ type: "text", text: "" });
+              return false;
+
+            case "text_delta": {
+              if (!currentMsg) return false;
+              var ti = textIdx.get(ev.id);
+              if (ti === undefined) return false;
+              currentMsg.content[ti].text += ev.delta;
+              return false;
+            }
+
+            // A document arrives whole rather than in deltas, so it is simply
+            // appended as its own part.
+            case "file_available":
+              if (!currentMsg || !ev.part) return false;
+              currentMsg.content.push(ev.part);
+              return false;
+
+            case "reasoning_start":
+              if (!currentMsg) return false;
+              reasonIdx.set(ev.id, currentMsg.content.length);
+              currentMsg.content.push({
+                type: "reasoning",
+                key: "reasoning-" + ev.id,
+                text: "",
+              });
+              return false;
+
+            case "reasoning_delta": {
+              if (!currentMsg) return false;
+              var ri = reasonIdx.get(ev.id);
+              if (ri === undefined) return false;
+              currentMsg.content[ri].text += ev.delta;
+              return false;
+            }
+
+            case "tool_input_start":
+              if (!currentMsg) return false;
+              toolIdx.set(ev.tool_call_id, currentMsg.content.length);
+              currentMsg.content.push({
+                type: "tool_input",
+                tool_call_id: ev.tool_call_id,
+                tool_name: ev.tool_name,
+                input: null,
+              });
+              return false;
+
+            case "tool_input_available": {
+              if (!currentMsg) return false;
+              var idx = toolIdx.get(ev.tool_call_id);
+              if (idx === undefined) return false;
+              currentMsg.content[idx].input = ev.input;
+              currentMsg.content[idx].tool_kind = ev.tool_kind;
+              return false;
+            }
+
+            case "tool_output_available":
+              if (!currentMsg) return false;
+              currentMsg.content.push({
+                type: "tool_output",
+                tool_call_id: ev.tool_call_id,
+                output: ev.output,
+              });
+              return false;
+
+            case "request_feedback":
+              if (!currentMsg) return false;
+              currentMsg.content.push({
+                type: "feedback_request",
+                tool_call_id: ev.tool_call_id,
+                node_id: ev.node_id,
+                tool_name: ev.tool_name,
+                arguments: ev.arguments,
+                state: "pending",
+              });
+              isLoading = false;
+              currentStep = null;
+              return true;
+
+            case "reference": {
+              if (!currentMsg) return false;
+              // The same document can come back from more than one search;
+              // cite it once.
+              var seen = currentMsg.references.some(function (r) {
+                return r.url === ev.url && r.title === ev.title;
+              });
+              if (seen) return false;
+              currentMsg.references.push({
+                title: ev.title,
+                url: ev.url,
+                snippet: ev.snippet || undefined,
+              });
+              return false;
+            }
+
+            case "grounding_score":
+              if (currentMsg) currentMsg.groundingScore = ev.score;
+              return false;
+
+            case "start_step":
+              currentStep = ev.id;
+              if (currentMsg)
+                currentMsg.content.push({ type: "start_step", id: ev.id });
+              return false;
+
+            case "finish":
+              isLoading = false;
+              currentStep = null;
+              return false;
+
+            case "still_suspended":
+              isLoading = false;
+              currentStep = null;
+              return true;
+
+            case "error":
+              showError(ev.error);
+              isLoading = false;
+              currentStep = null;
+              return true;
+
+            default:
+              // The tally that closes every turn carries no `type` tag.
+              if (currentMsg && ev && Array.isArray(ev.tokens)) {
+                currentMsg.usage = ev.tokens;
+              }
+              return false;
+          }
+        }
+
+        async function processStream(gen, isResuming) {
+          isLoading = true;
+          currentStep = null;
+          showError(null);
+          syncComposer();
+          try {
+            for await (var ev of gen) {
+              var done = handleEvent(ev, isResuming);
+              update();
+              if (done) return;
+            }
+          } catch (e) {
+            showError(e instanceof Error ? e.message : String(e));
+          } finally {
+            isLoading = false;
+            currentStep = null;
+            update();
+          }
+        }
+
+        // ---- Actions --------------------------------------------------------
+
+        async function sendMessage() {
+          var text = inputEl.value.trim();
+          if ((!text && !attachments.length) || isLoading || !sessionId) return;
+
+          if (attachedBytes() > MAX_REQUEST_BYTES) {
+            showError(
+              "Attachments are too large; the limit is " +
+                humanSize(MAX_REQUEST_BYTES) +
+                " per message.",
+            );
+            return;
+          }
+
+          // Documents lead so the question reads last, which is the part the
+          // model is being asked to answer.
+          var content = attachments.map(attachmentPart);
+          if (text) content.push({ type: "text", text: text });
+
+          inputEl.value = "";
+          attachments = [];
+          renderAttachments();
+          autoGrow();
+
+          if (!messages.length) {
+            innerEl.innerHTML = "";
+            errorEl = null;
+            pendingEl = null;
+          }
+
+          // The rendered message carries a DOM handle, so the wire payload is
+          // built separately rather than serialising the whole thing.
+          var id = uuid();
+          appendMsg({ id: id, role: "user", content: content });
+
+          await processStream(
+            sse(CHAT_PATH, { id: id, role: "user", content: content }),
+            false,
+          );
+        }
+
+        async function resolveFeedback(toolCallId, reject, args) {
+          if (resuming || !currentMsg) return;
+          resuming = true;
+
+          currentMsg.content.forEach(function (p) {
+            if (
+              p.type === "feedback_request" &&
+              p.tool_call_id === toolCallId
+            ) {
+              p.state = reject ? "rejected" : "approved";
+              if (!reject && args !== undefined) p.arguments = args;
+            }
+          });
+          update();
+
+          var request = { tool_call_id: toolCallId, reject: reject };
+          if (!reject && args !== undefined) request.arguments = args;
+
+          try {
+            await processStream(sse(RESUME_PATH, request), true);
+          } finally {
+            resuming = false;
+          }
+        }
+
+        async function startSession() {
+          sessionId = null;
+          messages = [];
+          currentMsg = null;
+          innerEl.innerHTML = "";
+          errorEl = null;
+          pendingEl = null;
+          openBlocks.clear();
+          attachments = [];
+          renderAttachments();
+          showEmptyState();
+          syncComposer();
+
+          try {
+            var headerBag = {};
+            headerBag[USER_ID_HEADER] = USER_ID;
+            var response = await fetch(INIT_PATH, {
+              method: "GET",
+              headers: headerBag,
+            });
+            if (!response.ok) throw new Error(await response.text());
+            var data = await response.json();
+            sessionId = data.session_id;
+          } catch (e) {
+            innerEl.innerHTML = "";
+            showError(
+              "Could not start a session: " +
+                (e instanceof Error ? e.message : String(e)),
+            );
+          }
+          syncComposer();
+        }
+
+        // ---- Wiring -----------------------------------------------------------
+
+        function autoGrow() {
+          inputEl.style.height = "auto";
+          inputEl.style.height = inputEl.scrollHeight + "px";
+        }
+
+        inputEl.addEventListener("input", function () {
+          autoGrow();
+          syncComposer();
+        });
+
+        inputEl.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        });
+
+        sendEl.addEventListener("click", sendMessage);
+        document.getElementById("new-chat").addEventListener("click", function () {
+          if (isLoading) return;
+          startSession();
+        });
+
+        attachEl.addEventListener("click", function () {
+          fileInputEl.click();
+        });
+
+        fileInputEl.addEventListener("change", function () {
+          addFiles(fileInputEl.files);
+          // Cleared so that removing a file and picking it again still fires.
+          fileInputEl.value = "";
+        });
+
+        micEl.addEventListener("click", toggleRecording);
+
+        attachmentsEl.addEventListener("click", function (e) {
+          var chip = e.target.closest(".chip");
+          if (!chip || !e.target.closest("button")) return;
+          attachments = attachments.filter(function (att) {
+            return att.id !== chip.dataset.id;
+          });
+          renderAttachments();
+          syncComposer();
+        });
+
+        // Pasting a screenshot is the quickest way to ask about one.
+        inputEl.addEventListener("paste", function (e) {
+          var files = e.clipboardData && e.clipboardData.files;
+          if (!files || !files.length) return;
+          e.preventDefault();
+          addFiles(files);
+        });
+
+        // Dropping a file attaches it rather than navigating away from the chat.
+        document.addEventListener("dragover", function (e) {
+          e.preventDefault();
+        });
+
+        document.addEventListener("drop", function (e) {
+          if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+          e.preventDefault();
+          addFiles(e.dataTransfer.files);
+        });
+
+        // Disclosure state and the feedback buttons are delegated, because the
+        // elements they belong to are recreated on every render.
+        innerEl.addEventListener("toggle", function (e) {
+          var el = e.target;
+          if (!el.dataset || !el.dataset.key) return;
+          if (el.open) openBlocks.add(el.dataset.key);
+          else openBlocks.delete(el.dataset.key);
+        }, true);
+
+        innerEl.addEventListener("click", function (e) {
+          var button = e.target.closest("button[data-act]");
+          if (!button) return;
+          var card = button.closest(".feedback");
+          if (!card) return;
+
+          var toolCallId = card.dataset.call;
+          if (button.dataset.act === "reject") {
+            resolveFeedback(toolCallId, true);
+            return;
+          }
+
+          var raw = card.querySelector("textarea").value.trim();
+          var args;
+          if (raw) {
+            try {
+              args = JSON.parse(raw);
+            } catch (err) {
+              showError("Arguments are not valid JSON: " + err.message);
+              return;
+            }
+          }
+          resolveFeedback(toolCallId, false, args);
+        });
+
+        startSession();
+      })();
+    </script>
+  </body>
+</html>

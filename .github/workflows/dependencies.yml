@@ -1,0 +1,51 @@
+# Checks Forma's Rust dependencies:
+# - cargo deny: licences, banned or duplicated crates, and where crates come
+#   from (forma/deny.toml), on changes to the dependencies.
+# - cargo audit: known vulnerabilities (the RustSec database). Also daily,
+#   because a new advisory can affect code that has not changed.
+name: Dependencies
+
+on:
+  pull_request:
+    paths:
+      - "forma/**/Cargo.toml"
+      - "forma/Cargo.lock"
+      - "forma/deny.toml"
+      - ".github/workflows/dependencies.yml"
+  push:
+    branches: [main]
+    paths:
+      - "forma/**/Cargo.toml"
+      - "forma/Cargo.lock"
+      - "forma/deny.toml"
+      - ".github/workflows/dependencies.yml"
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deny:
+    name: cargo deny
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: forma/Cargo.toml
+          command: check bans licenses sources
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: Audit
+        working-directory: forma
+        run: cargo audit

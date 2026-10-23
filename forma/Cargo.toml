@@ -1,0 +1,131 @@
+[package]
+name = "forma"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+[workspace]
+members = [
+    "genai_client",
+    "agent",
+    "protocols",
+    "evaluations",
+    "utils",
+    "derive",
+    "db",
+    "bench",
+]
+
+[features]
+default = ["api", "cli"]
+api = [ "schemars" ]
+cli = [
+    "api",
+    "hot-reload",
+    "dotenvy",
+]
+multi-tenant = []
+hot-reload = [
+    "notify",
+]
+
+# No calls to APIs that cannot be
+# simulated locally
+airtight = []
+integration_test = [
+    "genai_client/integration_test",
+    "agent/integration_test",
+    "protocols/integration_test",
+    "evaluations/integration_test",
+]
+
+[workspace.dependencies]
+base64 = { version = "0.23"}
+# Only to shrink pictures before they are sent to a model: the formats a
+# workspace accepts, and nothing else.
+image = { version = "0.25", default-features = false, features = [
+    "jpeg",
+    "png",
+    "gif",
+    "webp",
+] }
+chrono = { version = "0.4", features = ["serde"] }
+# Time zones by IANA name, for the current-date tool.
+chrono-tz = "0.10"
+rand = { version = "0.10" }
+regex = "1.13.1"
+async-stream = "0.3"
+futures = "0.3"
+reqwest = { version = "0.13", features = ["stream", "json", "multipart"] }
+serde = { version = "1.0", features = ['derive'] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ['io-util'] }
+tokio-util = "0.7"
+uuid = { version = "1.28", features = ["v4"] }
+serde_yaml = "0.9"
+async-trait = "0.1"
+tracing = "0.1"
+http = "1.5"
+derive = { path = "./derive" }
+bytes = { version="1.12", features = ["serde" ]}
+
+[dependencies]
+base64 = { workspace = true }
+schemars = { version="1.2", optional = true }
+db = { path = "./db" }
+chrono = { workspace = true }
+agent = { path = "./agent" }
+protocols = { path = "./protocols" }
+genai_client = { path = "./genai_client" }
+evaluations = { path = "./evaluations" }
+utils = { path = "utils" }
+tokio = { workspace = true }
+uuid.workspace = true
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+async-stream = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+axum = { version = "0.8", features = ["macros"] }
+serde_json = { workspace = true }
+regex = { workspace = true }
+clap = { version = "4.5", features = ["derive", "env"] }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-opentelemetry = "0.34"
+opentelemetry_sdk = "0.33"
+opentelemetry = { version = "0.33", features = ["metrics", "trace"] }
+opentelemetry-otlp = { version = "0.33", features = ['grpc-tonic'] }
+opentelemetry-resource-detectors = "0.13"
+opentelemetry-appender-tracing = "0.33"
+dotenvy = { version = "0.15", optional = true }
+tower-http = { version = "0.7", features = ["cors", "trace"] }
+notify = { version = "8.2", optional = true }
+derive = { workspace = true }
+reqwest = { workspace = true }
+rmcp = { version = "3.4", default-features=false, features = ["client", "auth","transport-streamable-http-client-reqwest"] }
+colored = { version="3.1"}
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+# HMAC-SHA256, to check that a webhook delivery was signed by its platform.
+ring = "0.17"
+
+[profile.release]
+lto = "thin"
+codegen-units = 8
+
+[[bin]]
+name = "forma"
+path = "bin/forma.rs"
+
+[[bin]]
+name = "forma-manager"
+path = "bin/forma-manager.rs"
+required-features = ["api"]
+
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin_include)"] }
+
+[dev-dependencies]
+tempfile = "3.24"

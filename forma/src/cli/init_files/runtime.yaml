@@ -1,0 +1,14 @@
+# How this agent is served, by `forma serve`, by `forma dev` (which always
+# speaks SSE to its chat UI) and in production.
+client: sse
+# Where conversations are kept: `file` (in ./forma-db), `mongo` (SESSIONS_DB_URL)
+# or `none`.
+storage: file
+# Where workspaces are kept, for agents that use workspace tools:
+# workspaces:
+#   store: local
+#   dir: ./workspaces
+# Where code runs, for agents that use the `code` tool (it needs workspaces in
+# `gcs`, which can sign the URLs a run uses):
+# code_execution:
+#   sandbox: local-docker

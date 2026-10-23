@@ -1,0 +1,32 @@
+[package]
+name = "genai_client"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+
+[dependencies]
+base64 = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+futures = { workspace = true }
+serde_json = { workspace = true }
+tokio-util = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+derive = { workspace = true }
+google-cloud-aiplatform-v1 = { version = "1.17", default-features = false, features = [
+    "prediction-service",
+] }
+google-cloud-gax = "1"
+serde_yaml = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+
+[features]
+default = []
+integration_test = []

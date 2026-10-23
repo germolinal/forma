@@ -1,0 +1,26 @@
+---
+import Button from "../ui/Button.astro";
+import { docs, site } from "../../config/site";
+
+// The Apple Silicon build; the guide lists the others.
+const commands = [
+  `curl -sL ${site.repo}/releases/latest/download/forma-aarch64-apple-darwin.tar.gz | tar -xz`,
+  "sudo mv forma-aarch64-apple-darwin/forma /usr/local/bin/",
+  "forma init --path my-agent",
+];
+---
+
+<section class="shell section border-t">
+  <div class="max-w-2xl">
+    <h2 class="text-3xl font-semibold sm:text-4xl">Try it</h2>
+    <p class="text-muted-foreground mt-4">
+      Download the CLI (here, for a Mac with Apple Silicon; Linux and Intel Macs
+      are in the guide), and start a project:
+    </p>
+    <pre
+      class="bg-panel text-panel-foreground mt-6 overflow-x-auto rounded-xl p-6 font-mono text-sm leading-7"><code>{commands.join("\n")}</code></pre>
+    <Button href={docs.gettingStarted} variant="link" class="mt-4 px-0">
+      Follow the getting-started guide →
+    </Button>
+  </div>
+</section>

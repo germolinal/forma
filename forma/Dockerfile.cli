@@ -1,0 +1,20 @@
+FROM rust:1.99.1-trixie AS build
+
+WORKDIR /app
+
+RUN apt-get update && apt-get upgrade -y
+COPY . .
+RUN cargo build --release --bin forma
+
+FROM debian:trixie-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# /usr/local/bin is on the default PATH, so downstream images can just
+# `RUN forma ...` without setting anything up.
+COPY --from=build /app/target/release/forma /usr/local/bin/forma
+
+WORKDIR /work
+CMD ["forma", "--help"]
