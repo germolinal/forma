@@ -2,70 +2,70 @@
   "date": "2026-10-23",
   "runs": {
     "Without OpenTelemetry": {
-      "machine": "2026-10-23 11:54, Darwin arm64, 8 CPUs.",
+      "machine": "2026-10-23 14:04, Darwin arm64, 8 CPUs.",
       "targets": {
         "none": {
-          "overhead_ms": 1.425,
-          "overhead_p90_ms": 2.045,
-          "cpu_ms_per_message": 2.5868055555555554,
-          "rss_mb_one_conversation": 19.34375,
-          "rss_mb_peak": 32.28125,
-          "messages_per_s": 6848.544771297544,
+          "overhead_ms": 1.202,
+          "overhead_p90_ms": 2.112,
+          "cpu_ms_per_message": 3.263888888888889,
+          "rss_mb_one_conversation": 18.953125,
+          "rss_mb_peak": 32.046875,
+          "messages_per_s": 6611.15904471926,
           "realistic": {
             "concurrency": 64,
-            "messages_per_s": 38.23011133130035,
-            "latency_p50_ms": 1673.127,
-            "cores_busy": 0.09889386438131514
+            "messages_per_s": 38.23466407250667,
+            "latency_p50_ms": 1669.068,
+            "cores_busy": 0.12479369523665369
           },
           "errors": 0
         },
         "mongo": {
-          "overhead_ms": 12.566,
-          "overhead_p90_ms": 18.468,
-          "cpu_ms_per_message": 3.6631944444444446,
-          "rss_mb_one_conversation": 23.421875,
-          "rss_mb_peak": 47.734375,
-          "messages_per_s": 678.532366317626,
+          "overhead_ms": 4.472,
+          "overhead_p90_ms": 5.167,
+          "cpu_ms_per_message": 3.8020833333333335,
+          "rss_mb_one_conversation": 23.0625,
+          "rss_mb_peak": 49.78125,
+          "messages_per_s": 708.52858871503,
           "realistic": {
             "concurrency": 64,
-            "messages_per_s": 36.430896579856814,
-            "latency_p50_ms": 1758.474,
-            "cores_busy": 0.13345345795746158
+            "messages_per_s": 37.042018805093775,
+            "latency_p50_ms": 1727.687,
+            "cores_busy": 0.14083684233186697
           },
           "errors": 0
         }
       }
     },
     "With OpenTelemetry": {
-      "machine": "2026-10-23 11:56, Darwin arm64, 8 CPUs.",
+      "machine": "2026-10-23 14:06, Darwin arm64, 8 CPUs.",
       "targets": {
         "none": {
-          "overhead_ms": 2.265,
-          "overhead_p90_ms": 3.131,
-          "cpu_ms_per_message": 5.293103448275862,
-          "rss_mb_one_conversation": 47.625,
-          "rss_mb_peak": 78.46875,
-          "messages_per_s": 1885.6081071154924,
+          "overhead_ms": 1.426,
+          "overhead_p90_ms": 2.399,
+          "cpu_ms_per_message": 4.662045060658579,
+          "rss_mb_one_conversation": 23.4375,
+          "rss_mb_peak": 37.515625,
+          "messages_per_s": 2301.6383339021927,
           "realistic": {
             "concurrency": 64,
-            "messages_per_s": 34.82915818827575,
-            "latency_p50_ms": 1669.172,
-            "cores_busy": 0.18435433730690784
+            "messages_per_s": 34.627785017935174,
+            "latency_p50_ms": 1670.193,
+            "cores_busy": 0.16143629410441182
           },
           "errors": 0
         },
         "mongo": {
-          "overhead_ms": 11.655,
-          "overhead_p90_ms": 17.919,
-          "cpu_ms_per_message": 6.180555555555555,
-          "rss_mb_one_conversation": 77.6875,
-          "rss_mb_peak": 459.015625,
-          "messages_per_s": 549.7551433049507,
+          "overhead_ms": 5.994,
+          "overhead_p90_ms": 6.73,
+          "cpu_ms_per_message": 5.173611111111111,
+          "rss_mb_one_conversation": 27.171875,
+          "rss_mb_peak": 52.75,
+          "messages_per_s": 624.1628563329236,
           "realistic": {
             "concurrency": 64,
-            "messages_per_s": 36.600879400484146,
-            "latency_p50_ms": 1748.151,
-            "cores_busy": 0.2262137685168812
+            "messages_per_s": 37.46939196601172,
+            "latency_p50_ms": 1703.613,
+            "cores_busy": 0.19385206260193563
           },
           "errors": 0
         }
