@@ -1,6 +1,6 @@
 [package]
 name = "forma-bench"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 publish = false
 description = "A mock LLM and a load generator, to measure Forma itself"
