@@ -206,8 +206,8 @@ Scan the history for secrets first (`OPEN_SOURCE.md`, "Before publishing").
   dependencies change, and `cargo audit` (RustSec) on those changes and daily.
   Vulnerabilities are left to `cargo audit` so the two don't report the same
   advisory twice.
-- `forma/deny.toml` allows permissive licences plus MPL-2.0. **Part of the
-  licence discussion**: if Forma's licence changes, this list changes with it.
+- `forma/deny.toml` allows permissive licences plus MPL-2.0, all of which can
+  ship inside MIT-licensed Forma.
   Duplicate crate versions warn, they don't fail. CC0-1.0 is allowed too
   (`notify`, `tiny-keccak`).
 - Every crate in the workspace has `publish = false`: none is on crates.io,
@@ -247,8 +247,11 @@ Scan the history for secrets first (`OPEN_SOURCE.md`, "Before publishing").
 - `forma/README.md` links `github.com/ai-forma/forma-examples`, which won't
   exist under `germolinal`. Move the examples into this repository, or drop
   the link.
-- `forma/LICENSE` says "Copyright (c) 2025 Forma AI": part of the licence
-  discussion.
+- **Licence (decided 2026-10-23): MIT**, "Copyright (c) 2025-2026 German
+  Molina", in `LICENSE` at the repository root (the release copies it into
+  the CLI's archives; the images carry `org.opencontainers.image.licenses`).
+  Every crate says `license = "MIT"`. Abuse is handled through the name,
+  not the licence: `TRADEMARKS.md`, as Deno and Node.js do.
 
 ## Logo
 

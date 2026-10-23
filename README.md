@@ -21,3 +21,8 @@ the CLI's binaries (GitHub Releases), and the container images
 
 `deployments/gcp/` has Terraform for one agent on Google Cloud, using those
 images.
+
+## Licence
+
+Forma is [MIT-licensed](LICENSE). The name "Forma" and its logo are not
+covered by the licence: see [TRADEMARKS.md](TRADEMARKS.md).

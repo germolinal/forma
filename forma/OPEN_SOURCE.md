@@ -28,7 +28,7 @@ What already exists, and what each goal can start from:
 | `build_cli.yaml` | Cloud Build config for an `enterprise-template` project. A Clonsult leftover: remove or replace (`Dockerfile.single_tenant` and `build_single_tenant.yaml` are gone) |
 | `Dockerfile.tester` | Rust with clippy and rustfmt, for Forma's own CI |
 | `cicd/` (repo root) | Clonsult's pipelines, including `release-binaries.sh`, which packages the `channel` binary for self-hosted Clonsult. Not Forma's release process, but it shows how to extract binaries from the images |
-| `LICENSE` | MIT, "Copyright (c) 2025 Forma AI". Confirm the holder before publishing |
+| `LICENSE` | MIT, "Copyright (c) 2025-2026 German Molina", at the repository root. The name and logo are covered by `TRADEMARKS.md` |
 | `docs/` | mdBook, published with the website at `germolinal.github.io/forma/docs`. Covers single-tenant deployment (`deployment.md`, `cloud-deployment.md`), the HTTP API, the channels, evaluations. The reference pages are generated from doc comments (`make docs`) and git-ignored |
 | `typescript-sdk/` | No `package.json`: consumed by path from `front/`. Not publishable as it is |
 | `forma eval` | Already fails (non-zero exit) when a metric scores below its `required_score`, unless `--no-fail`. Good enough for a CI gate |
