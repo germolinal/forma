@@ -10,13 +10,15 @@ Forma is written in [Rust](https://www.rust-lang.org/tools/install), and the [Fo
 | `forma` (server)| `cargo build --release --bin forma --no-default-features --features ...` | Serving agents in production. Check the [Deployment](./deployment.md) section |
 | `forma-manager` | `cargo build --release --bin forma-manager --no-default-features --features ...,api` | Deploying agents to a multi-tenant server                |
 
-The repository also includes Dockerfiles for each of these:
+Each release publishes these as container images (check [Deployment](./deployment.md#the-images)), so you only need to build them yourself to change Forma, or to build an image of your own. The repository includes the Dockerfiles the images are built from:
 
 | File                      | Produces                                                                                     |
 | ------------------------- | -------------------------------------------------------------------------------------------- |
-| `Dockerfile.cli`          | An image with the CLI at `/usr/local/bin/forma`, useful for running evaluations in CI/CD     |
-| `Dockerfile.channel`      | A production server, with the features passed in the `FEATURES` build argument (none, or `multi-tenant`) |
-| `Dockerfile.manager`      | The manager, with the `api` feature                                                          |
+| `Dockerfile.cli`          | `forma-cli`: the CLI at `/usr/local/bin/forma`, for compiling and evaluating agents in CI/CD |
+| `Dockerfile.channel`      | `forma` and `forma-multi-tenant`: a production server, with the features passed in the `FEATURES` build argument (none, or `multi-tenant`) |
+| `Dockerfile.manager`      | `forma-manager`: the manager, with the `api` feature                                         |
+
+To use your own builds in an agent's `Dockerfile`, tag them as `<registry>/forma-cli` and `<registry>/forma`, and build the agent with `--build-arg FORMA_REGISTRY=<registry>`.
 
 ## The `Makefile`
 

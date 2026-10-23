@@ -37,6 +37,7 @@ Let's see what is in there
 | `runtime.yaml`              | Information regarding the [runtime](../reference_docs/auto-formaruntime.md) (i.e., how clients talk to your agent, and where conversations are kept) |
 | `.env`                      | This is the file where you will store configuration and secret variables, like API Keys and the URL of databases              |
 | `.gitignore`                | The file that defines what should be shared with the other people in your team, or not (e.g., you can have your own API Keys) |
+| `Dockerfile`, `.dockerignore` | Package your agent as a production server, in a container image (check [Deployment](./deployment.md))                       |
 | `README.md`                 | A short guide to the project, with the commands you will use the most                                                         |
 | `agent-dev-guidelines.md`   | Longer guidelines on how to develop and evaluate Forma agents. (They are also useful for coding assistants.)                  |
 

@@ -2,47 +2,37 @@
 
 So far, we have been running Dory with the Forma CLI (`forma dev` and `forma serve`). The CLI is great for development, as it includes everything: hot reloading, a chat UI, evaluations, and more. However, this is not what you want in production.
 
-In production, Forma agents are served by **lean binaries**, compiled from the [Forma source code](https://github.com/germolinal/forma). How a server works is decided in two places:
+In production, Forma agents are served by **lean servers**: builds of Forma without the development commands, published as **container images** with every release. How a server works is decided in two places:
 
-1. **When compiling** - Whether the server runs a single agent or many, and whether the agent can change without restarting the server. These change what the server *is*, so they are [Cargo features](https://doc.rust-lang.org/cargo/reference/features.html).
+1. **Which image you run** - Whether the server runs a single agent (`forma`) or many (`forma-multi-tenant`). This changes what the server *is*, so it is decided when Forma is compiled.
 2. **In `runtime.yaml`** - How clients talk to your agent (e.g., a web app, WhatsApp, or another server), where conversations are kept, and what the agent's tools can reach. This is the same file the CLI reads, so what you tried with `forma serve` is what runs in production.
 
 > **📌 Note**: The agent itself runs exactly the same in all of these. This is what lets you develop with the CLI and deploy with confidence.
 
-## Building a production server
+## The images
 
-The CLI is built with the default features (which include everything), so production builds start with `--no-default-features`:
+Every release publishes four images to the GitHub Container Registry, for `linux/amd64` and `linux/arm64`:
 
-```sh
-# From within the forma repository.
-# A single-tenant server
-cargo build --release --bin forma --no-default-features
-```
+| Image                                   | What it is                                                                                     |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `ghcr.io/germolinal/forma`              | A single-tenant server: **one agent**, read from a file. The base for your agent's image        |
+| `ghcr.io/germolinal/forma-multi-tenant` | A multi-tenant server: **many agents**, read from the database on every request                 |
+| `ghcr.io/germolinal/forma-manager`      | The manager, which deploys agents to multi-tenant servers                                       |
+| `ghcr.io/germolinal/forma-cli`          | The CLI, for pipelines: compiling agents (`forma expand -c`) and evaluating them (`forma eval`) |
 
-The binary will be at `./target/release/forma`. Notice that it only knows one command:
+Each is tagged with its version (e.g., `0.9.18`), its minor version (`0.9`, which moves with patch releases) and `latest`. **Pin a version in production** (or, better, a digest: `ghcr.io/germolinal/forma@sha256:...`), so that your image doesn't change because Forma released a new one. Use the same version for the CLI that compiles your agent and the server that runs it: `forma --version` tells you which one you develop with.
 
-```sh
-./target/release/forma --help
-```
+The three server images are built on [distroless](https://github.com/GoogleContainerTools/distroless): they contain the server and its runtime libraries, and nothing else (no shell, no package manager). `forma-cli` is built on Debian, so pipelines can run commands in it. What the server images expect:
 
-```text
-Forma
+| | `forma`, `forma-multi-tenant` | `forma-manager` |
+| --- | --- | --- |
+| The binary | `/app/forma` | `/app/forma-manager` |
+| Default command | `/app/forma serve -t just-otel -r /config/runtime.yaml` | `/app/forma-manager` |
+| The runtime file | Mounted (or copied) at `/config/runtime.yaml` | — |
+| The agent | `forma`: a compiled agent, passed with `-a`. `forma-multi-tenant`: none, they are in the database | — |
+| Port | `PORT`, or `8080` | `PORT`, or `3001` |
 
-Usage: forma <COMMAND>
-
-Commands:
-  serve  Runs a production server
-  help   Print this message or the help of the given subcommand(s)
-```
-
-Two features change what is built:
-
-| Feature        | What it does                                                                                                        |
-| -------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `multi-tenant` | Serves **many agents**, stored in the database and chosen per request, instead of one agent read from a file. More on both below |
-| `hot-reload`   | Lets an agent be replaced while the server is running                                                              |
-
-The CLI uses `hot-reload` to reload your agent every time you save a file. Production servers do not watch any files, so there is no reason to add it to a production build yet. If you need to update agents without restarting anything, use a multi-tenant server: agents are read from the database on every request, so a redeployed agent answers the very next message.
+> **📌 Note**: `-t just-otel` sends logs only to an OpenTelemetry collector. Without one, pass `-t console` (as the examples below do) to see them in the container's output.
 
 ## The runtime file
 
@@ -99,58 +89,53 @@ Without them, the server keeps no workspaces and runs no code, and the tools tha
 
 ## Single-tenant deployment
 
-A single-tenant server serves exactly one agent. It is the simplest option: the agent is part of your deployment, versioned with the rest of your code.
+A single-tenant server serves exactly one agent. It is the simplest option: the agent is part of your deployment, versioned with the rest of your code. You ship it as **your own image**: Forma's `forma` image, plus your compiled agent and its `runtime.yaml`.
 
-### 1. Compile your agent into a single file
+### 1. Production servers need a compiled agent
 
-Production servers do not resolve the `$/prompts/...` references we have been using, and they do not build tools. Therefore, they need your agent as a single, compiled file, which you produce with `forma expand -c`:
+Production servers do not resolve the `$/prompts/...` references we have been using, and they do not build tools. They need your agent as a single, compiled file, which `forma expand -c` produces:
 
 ```sh
 # Within your agent's project
 forma expand -c > agent.yaml
 ```
 
-> **❗Important**: Do not forget the `-c`. Without it, tools are not built, and your agent will not be able to use them.
+> **❗Important**: Do not forget the `-c`. Without it, tools are not built, and the server refuses to start (`the agent in 'agent.yaml' has no nodes`).
 
-### 2. Run it
+You rarely need to run this yourself: the `Dockerfile` below does it for you.
 
-```sh
-PORT=8080 FORMA_AGENT_KEY=key-not-for-production ./target/release/forma serve -a agent.yaml -r runtime.yaml
-```
+### 2. The `Dockerfile`
 
-Note that:
-
-* Production servers do not read your `.env` file. Environment variables have to be set by whatever runs the server (check the [list below](#environment-variables)).
-* `-a` is the agent's file (`agent` by default), and `-r` the runtime file (`runtime.yaml` by default). If either has no extension, `.yaml` is added: `-a agent` and `-a agent.yaml` are the same.
-* Production servers listen on every network interface (`0.0.0.0`), while the CLI only listens to requests coming from your own computer (`127.0.0.1`).
-* Telemetry is sent to an OpenTelemetry collector by default (`-t otel`). Add `-t console` to just print logs. (Check the [Observability](./observability.md) section.)
-
-You can now talk to it exactly like you did with `forma serve` (check the [API Key](./forma-agent-api-key.md#3-make-requests) section).
-
-### 3. Containers
-
-The [Forma repository](https://github.com/germolinal/forma) includes a `Dockerfile.channel` that compiles the binary, with the features you choose (none for a single-tenant server), and copies it into a minimal [distroless](https://github.com/GoogleContainerTools/distroless) image (no shell, no package manager). It does not contain any agent: it is meant to be used as a base image. Its command, `forma serve -r /config/runtime.yaml`, reads a runtime file mounted at `/config`: for a multi-tenant server (`--build-arg FEATURES=multi-tenant`), which has no agent file, mounting that file is all it needs.
-
-```sh
-# From within the forma repository
-docker build -f Dockerfile.channel -t forma .
-```
-
-Or start from the images each release publishes, for `linux/amd64` and `linux/arm64`: `ghcr.io/germolinal/forma` (single-tenant), `ghcr.io/germolinal/forma-multi-tenant` and `ghcr.io/germolinal/forma-manager`, tagged with the version (e.g., `0.9.18`, `0.9`) and `latest`.
-
-Then, in your agent's project, create a `Dockerfile` that adds your compiled agent and its runtime file:
+`forma init` creates a `Dockerfile` in your project. It builds your image in two steps: the `forma-cli` image compiles your agent, and only the result is copied into the `forma` image, which has no CLI and no shell.
 
 ```dockerfile
-FROM forma:latest
+ARG FORMA_VERSION=latest
+ARG FORMA_REGISTRY=ghcr.io/germolinal
 
-# Produced by `forma expand -c > agent.yaml`
-COPY ./agent.yaml /app/agent.yaml
-COPY ./runtime.yaml /app/runtime.yaml
+# 1. Compile the agent
+FROM ${FORMA_REGISTRY}/forma-cli:${FORMA_VERSION} AS compile
+WORKDIR /work
+COPY src ./src
+COPY evals ./evals
+RUN forma expand -c > agent.yaml
 
-CMD ["/app/forma", "serve", "-t", "just-otel", "-a", "/app/agent.yaml", "-r", "/app/runtime.yaml"]
+# 2. The production server, with the compiled agent and its runtime file
+FROM ${FORMA_REGISTRY}/forma:${FORMA_VERSION}
+COPY --from=compile /work/agent.yaml /app/agent.yaml
+COPY runtime.yaml /config/runtime.yaml
+CMD ["/app/forma", "serve", "-t", "console", "-a", "/app/agent.yaml", "-r", "/config/runtime.yaml"]
 ```
 
-And build and run it (to run it on a cloud service instead, check [Deploying to the cloud](./cloud-deployment.md)):
+(The file in your project has comments explaining each line. If your project was created before it existed, copy it from here.)
+
+Before building it for production:
+
+* **Pin `FORMA_VERSION`** to the version you develop with (e.g., `ARG FORMA_VERSION=0.9.18`).
+* **Choose `storage: mongo`** in `runtime.yaml` (see [The storage](#2-the-storage)). With `storage: file`, conversations are kept inside the container, and lost whenever it is replaced.
+* **Use a hosted LLM provider.** Ollama runs on your computer, not in the container.
+* **MCP tools that need `forma login`** can't be compiled inside the build, because the tokens stay on your computer. Compile the agent yourself (`forma expand -c > agent.yaml`), and replace the first step with a `COPY agent.yaml /app/agent.yaml` in the second.
+
+### 3. Build and run it
 
 ```sh
 docker build -t dory .
@@ -160,33 +145,79 @@ docker run -p 8080:8080 \
   dory
 ```
 
+Note that:
+
+* Production servers do not read your `.env` file. Environment variables have to be set by whatever runs the container (check the [list below](#environment-variables)). Locally, `docker run --env-file .env` passes them all at once.
+* Secrets are never part of the image. Only the agent and the runtime file are.
+* To change the runtime file without rebuilding, mount another one over it: `-v ./runtime.yaml:/config/runtime.yaml`.
+* Production servers listen on every network interface (`0.0.0.0`), while the CLI only listens to requests coming from your own computer (`127.0.0.1`).
+* `-t console` prints logs. `-t otel` also sends traces and metrics to an OpenTelemetry collector (check the [Observability](./observability.md) section).
+
+You can now talk to it exactly like you did with `forma serve` (check the [API Key](./forma-agent-api-key.md#3-make-requests) section). To run it on a cloud service, check [Deploying to the cloud](./cloud-deployment.md).
+
+### Compiling in a pipeline
+
+The same two steps work in any CI/CD system that can run containers. For instance, to check that the agent compiles on every pull request, without building an image:
+
+```sh
+docker run --rm -v "$PWD":/work -w /work ghcr.io/germolinal/forma-cli:0.9.18 forma expand -c > /dev/null
+```
+
+`forma eval` runs in the same image (it needs the LLM providers' credentials).
+
+### Without containers
+
+Production servers are not published as plain binaries (only the CLI is). To run one outside a container, build it from the [Forma repository](https://github.com/germolinal/forma) (check [Building Forma from source](./building-forma.md)):
+
+```sh
+# From within the forma repository
+cargo build --release --bin forma --no-default-features
+```
+
+And run it with your compiled agent:
+
+```sh
+PORT=8080 FORMA_AGENT_KEY=key-not-for-production ./target/release/forma serve -t console -a agent.yaml -r runtime.yaml
+```
+
+`-a` is the agent's file (`agent` by default), and `-r` the runtime file (`runtime.yaml` by default). If either has no extension, `.yaml` is added: `-a agent` and `-a agent.yaml` are the same.
+
 ## Multi-tenant deployment
 
 A multi-tenant deployment serves many agents, possibly belonging to different users, from a single service. This is useful when your users create their own agents (e.g., in a web application), as you do not need to build and deploy a new server for each agent.
 
 It has two components, which share the same database:
 
-1. **The runtime** - A `forma` binary built with the `multi-tenant` feature. Instead of reading an agent from a file, it reads it from the database on every request. Its `runtime.yaml` says `storage: mongo`: it has to read agents from somewhere (`file` works too, for a single server).
-2. **The manager** - A separate binary, `forma-manager`, with an HTTP API to deploy, update and delete agents (among other things). It keeps them in MongoDB.
+1. **The runtime** - The `forma-multi-tenant` image. Instead of reading an agent from a file, it reads it from the database on every request. Its `runtime.yaml` says `storage: mongo`: it has to read agents from somewhere (`file` works too, for a single server).
+2. **The manager** - The `forma-manager` image, with an HTTP API to deploy, update and delete agents (among other things). It keeps them in MongoDB.
 
-```sh
-# From within the forma repository.
-# The runtime
-cargo build --release --bin forma --no-default-features --features multi-tenant
-# The manager. It needs the 'api' feature
-cargo build --release --bin forma-manager --no-default-features --features api
-```
+Neither needs an image of your own: no agent is built into them.
 
 > **❗Important**: The manager does not check API keys. It is meant to be called by your own back-end, and must not be exposed to the internet.
 
 ### 1. Run both services
 
 ```sh
-# The manager listens on port 3001 by default
-SESSIONS_DB_URL="mongodb://..." PORT=3001 ./target/release/forma-manager
+export SESSIONS_DB_URL="mongodb://..."
 
-# The runtime, with `storage: mongo` in runtime.yaml
-SESSIONS_DB_URL="mongodb://..." PORT=8080 FORMA_AGENT_KEY=key-not-for-production ./target/release/forma serve -r runtime.yaml
+# The manager listens on port 3001 by default
+docker run -d -p 3001:3001 -e SESSIONS_DB_URL ghcr.io/germolinal/forma-manager:0.9.18
+
+# The runtime, with `storage: mongo` in runtime.yaml, mounted where the image expects it
+docker run -d -p 8080:8080 \
+  -e SESSIONS_DB_URL -e FORMA_AGENT_KEY=key-not-for-production \
+  -v "$PWD/runtime.yaml:/config/runtime.yaml:ro" \
+  ghcr.io/germolinal/forma-multi-tenant:0.9.18 \
+  /app/forma serve -t console -r /config/runtime.yaml
+```
+
+(The last line replaces the image's command only to print logs; without it, they go to an OpenTelemetry collector.) On a cloud service, the runtime file is mounted the same way, e.g., from a secret: Cloud Run mounts files only from Secret Manager.
+
+To build them from source instead, use the `multi-tenant` feature for the runtime and `api` for the manager (check [Building Forma from source](./building-forma.md)):
+
+```sh
+cargo build --release --bin forma --no-default-features --features multi-tenant
+cargo build --release --bin forma-manager --no-default-features --features api
 ```
 
 > **📌 Note**: If deployments include credentials, or users connect to MCP servers, both services also need the same `FORMA_ENCRYPTION_KEY` (generate one with `openssl rand -base64 32`).
@@ -285,10 +316,22 @@ LLM providers and tools need their own variables (e.g., `OPENAI_API_KEY`), which
 
 ## Summary
 
-| You want...                                              | Build with                                  | `runtime.yaml`    | Run                                         |
-| -------------------------------------------------------- | ------------------------------------------- | ----------------- | ------------------------------------------- |
-| To develop, with hot reloading and a chat UI             | The default features (the CLI)              | Any               | `forma dev`, `forma serve`                  |
-| One agent, several copies sharing conversations          | No features                                 | `storage: mongo`  | `forma serve -a agent.yaml`                 |
-| One agent, one server, no database                       | No features                                 | `storage: file`   | `forma serve -a agent.yaml`                 |
-| A single-turn agent, with no memory                      | No features                                 | `storage: none`   | `forma serve -a agent.yaml`                 |
-| Many agents, deployed and updated without restarting     | `multi-tenant`, and `api` for `forma-manager` | `storage: mongo`  | `forma serve` + `forma-manager`             |
+| You want...                                              | Run                                                      | `runtime.yaml`    |
+| -------------------------------------------------------- | -------------------------------------------------------- | ----------------- |
+| To develop, with hot reloading and a chat UI             | The CLI: `forma dev`, `forma serve`                      | Any               |
+| One agent, several copies sharing conversations          | Your image, built on `forma` (the project's `Dockerfile`) | `storage: mongo`  |
+| One agent, one server with a persistent disk, no database | Your image, built on `forma`                            | `storage: file`   |
+| A single-turn agent, with no memory                      | Your image, built on `forma`                             | `storage: none`   |
+| Many agents, deployed and updated without restarting     | `forma-multi-tenant` + `forma-manager`                   | `storage: mongo`  |
+| To compile or evaluate agents in CI/CD                   | `forma-cli`                                              | —                 |
+
+## Features, for builds from source
+
+The images above cover every build Forma ships. If you compile Forma yourself, production builds start with `--no-default-features` (the CLI is built with the default features, which include everything), and two features change what is built:
+
+| Feature        | What it does                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `multi-tenant` | Serves **many agents**, stored in the database and chosen per request, instead of one agent read from a file (the `forma-multi-tenant` image) |
+| `hot-reload`   | Lets an agent be replaced while the server is running                                                              |
+
+The CLI uses `hot-reload` to reload your agent every time you save a file. Production servers do not watch any files, so there is no reason to add it to a production build yet. If you need to update agents without restarting anything, use a multi-tenant server: agents are read from the database on every request, so a redeployed agent answers the very next message.

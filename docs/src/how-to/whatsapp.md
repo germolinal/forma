@@ -188,7 +188,7 @@ timezone: America/Santiago
 
 ## Going to production
 
-**Your server.** In production, Forma agents are served by lean binaries, which read the same `runtime.yaml` as the CLI (check [Deployment](./deployment.md)). Keep `client: whatsapp`, and keep conversations in a database:
+**Your server.** In production, Forma agents are served by lean servers, published as container images, which read the same `runtime.yaml` as the CLI (check [Deployment](./deployment.md)). Your project's `Dockerfile` builds one with your agent. Keep `client: whatsapp`, and keep conversations in a database:
 
 ```yaml
 client: whatsapp

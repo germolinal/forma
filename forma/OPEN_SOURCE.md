@@ -65,8 +65,13 @@ TODO:
       infrastructure people run with their secrets.
 - [ ] Keep the distroless base pinned by digest, and bump it on purpose (as
       `Dockerfile.channel` does now).
-- [ ] Document the image contract: `/app/forma serve -a /app/agent.yaml`, which
-      variables each runtime needs, the port, what `-t` does.
+- [x] Document the image contract: `/app/forma serve -a /app/agent.yaml`, which
+      variables each runtime needs, the port, what `-t` does. In
+      `docs/src/how-to/deployment.md` ("The images"), with the two-step
+      `Dockerfile` that `forma init` now creates (2026-10-23).
+- [ ] The server images' default command sends logs only to a collector
+      (`-t just-otel`): a container run without one prints nothing. Consider
+      `-t otel` (collector and console) or `-t console` for the public images.
 
 ## 2. CLI binaries
 

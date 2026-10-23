@@ -90,14 +90,14 @@ Full documentation is available at [germolinal.github.io/forma/docs](https://ger
 
 ## Production servers
 
-While the **Forma CLI** includes features that are useful for development (e.g., hot reloading, a chat UI, evaluations, and more), **production servers** are smaller builds, meant to serve a Forma agent in production:
+While the **Forma CLI** includes features that are useful for development (e.g., hot reloading, a chat UI, evaluations, and more), **production servers** are smaller builds, meant to serve a Forma agent in production. Every release publishes them as container images, for `linux/amd64` and `linux/arm64`:
 
-```sh
-# A single-tenant server: one agent, read from a file
-cargo build --release --bin forma --no-default-features
-# A multi-tenant server: many agents, read from the database
-cargo build --release --bin forma --no-default-features --features multi-tenant
-```
+| Image | What it is |
+| --- | --- |
+| `ghcr.io/germolinal/forma` | A single-tenant server: one agent, read from a file |
+| `ghcr.io/germolinal/forma-multi-tenant` | A multi-tenant server: many agents, read from the database |
+| `ghcr.io/germolinal/forma-manager` | Deploys agents to multi-tenant servers |
+| `ghcr.io/germolinal/forma-cli` | The CLI, for compiling and evaluating agents in CI/CD |
 
 Everything else is decided in `runtime.yaml`, which production servers read just like `forma serve` does: how clients talk to the agent (`client`), where conversations are kept (`storage`), and where the agent's tools keep workspaces and run code.
 
@@ -114,13 +114,25 @@ storage: mongo     # or file, none
 | `whatsapp` | WhatsApp | Chat with a Forma agent via WhatsApp |
 | `ai-sdk-v5` | Web | Connects to a frontend using Vercel AI SDK v5 |
 
-Then run it with your compiled agent (`forma expand -c > agent.yaml`):
+`forma init` creates a `Dockerfile` that packages an agent on top of these images: the `forma-cli` image compiles the agent (`forma expand -c`), and the result is copied, with `runtime.yaml`, into the `forma` image.
 
 ```sh
+docker build -t my-agent .
+docker run -p 8080:8080 --env-file .env my-agent
+```
+
+To build the servers from source instead:
+
+```sh
+# A single-tenant server: one agent, read from a file
+cargo build --release --bin forma --no-default-features
+# A multi-tenant server: many agents, read from the database
+cargo build --release --bin forma --no-default-features --features multi-tenant
+# Then run it with a compiled agent (`forma expand -c > agent.yaml`)
 ./target/release/forma serve -a agent.yaml -r runtime.yaml
 ```
 
-The [Deployment](https://germolinal.github.io/forma/docs/how-to/deployment.html) guide covers the rest: containers, multi-tenant servers and the manager, and every setting.
+The [Deployment](https://germolinal.github.io/forma/docs/how-to/deployment.html) guide covers the rest: the images, multi-tenant servers and the manager, and every setting.
 
 ## Benchmarking
 

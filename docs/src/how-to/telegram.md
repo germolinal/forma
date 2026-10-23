@@ -194,7 +194,7 @@ timezone: America/Santiago
 
 ## Going to production
 
-In production, Forma agents are served by lean binaries, which read the same `runtime.yaml` as the CLI (check [Deployment](./deployment.md)). Keep `client: telegram`, and keep conversations in a database:
+In production, Forma agents are served by lean servers, published as container images, which read the same `runtime.yaml` as the CLI (check [Deployment](./deployment.md)). Your project's `Dockerfile` builds one with your agent. Keep `client: telegram`, and keep conversations in a database:
 
 ```yaml
 client: telegram

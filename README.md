@@ -14,5 +14,7 @@ web apps, on WhatsApp or on Telegram.
 See `forma/README.md` to build it, and the
 [documentation](https://germolinal.github.io/forma/docs/) to use it.
 
-Releases are `v*` tags: a tag publishes the website and the documentation
-(and, later, the binaries and the images).
+Releases are `v*` tags: a tag publishes the website and the documentation,
+the CLI's binaries (GitHub Releases), and the container images
+(`ghcr.io/germolinal/forma`, `forma-multi-tenant`, `forma-manager` and
+`forma-cli`).

@@ -60,7 +60,7 @@ You can also install it from the source code, using [Rust](https://www.rust-lang
 cargo install --path . --bin forma
 ```
 
-And there is an image with the CLI, for pipelines (e.g., to run evaluations in CI): `ghcr.io/germolinal/forma-cli`.
+And there is an image with the CLI, for pipelines (e.g., to compile agents or run evaluations in CI): `ghcr.io/germolinal/forma-cli`. The images that serve agents in production are in [Deployment](./deployment.md#the-images).
 
 
 ### Design of the Forma CLI

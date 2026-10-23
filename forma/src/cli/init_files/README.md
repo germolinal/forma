@@ -13,6 +13,7 @@ evals/data/wanderer.json     the questions it produced
 evals/metrics/politeness.md  the rubric a judge grades answers against
 evals/results/               written by `forma eval` (git-ignored)
 runtime.yaml                 the transport the agent is served over
+Dockerfile                   packages the agent as a production server
 agent-dev-guidelines.md      guidelines for developing agents
 dev/docker-compose.yaml      optional Phoenix, for traces and eval results
 .env                         ports, API keys, and other settings
@@ -23,8 +24,9 @@ conversation without any database to set up.
 
 ## Installing the `Forma CLI`
 
-> We are not distributing compiled binaries. If you are reading this, you might
-> already have it. Try `forma --version` to check.
+If you are reading this, you probably have it already: try `forma --version`.
+Otherwise, download it from the
+[latest release](https://github.com/germolinal/forma/releases/latest).
 
 ## Getting started
 
@@ -104,3 +106,22 @@ hold datasets and evaluation results instead of the filesystem:
 docker compose -f dev/docker-compose.yaml up   # UI at http://localhost:6006
 forma eval -a --platform phoenix
 ```
+
+### Ship it
+
+The `Dockerfile` packages the agent as a production server: it compiles the
+agent with the Forma CLI image, and copies the result into Forma's production
+image.
+
+```sh
+docker build -t dory .
+docker run -p 8080:8080 --env-file .env dory
+```
+
+Before deploying, switch to a hosted LLM provider (Ollama runs on your
+computer) and to `storage: mongo` in `runtime.yaml`, and pin `FORMA_VERSION`
+in the `Dockerfile` to the version you develop with. The
+[Deployment](https://germolinal.github.io/forma/docs/how-to/deployment.html)
+guide has the details, and
+[Deploying to the cloud](https://germolinal.github.io/forma/docs/how-to/cloud-deployment.html)
+puts it on Cloud Run, end to end.

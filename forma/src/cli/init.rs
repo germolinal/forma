@@ -99,6 +99,14 @@ impl InitArgs {
             include_str!("./init_files/runtime.yaml"),
         )?;
 
+        // Container image for production
+        self.cp(&path, "Dockerfile", include_str!("./init_files/Dockerfile"))?;
+        self.cp(
+            &path,
+            ".dockerignore",
+            include_str!("./init_files/dockerignore.txt"),
+        )?;
+
         // agent-dev-guidelines
         self.cp(
             &path,
