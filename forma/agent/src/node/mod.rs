@@ -603,7 +603,7 @@ impl Node {
             );
         }
         if let Some(outmsg) = response.message() {
-            let v = serde_json::to_string(outmsg).expect("why didn't this work?");
+            let v = genai_client::telemetry::to_json(outmsg);
             span.record("gen_ai.output.messages", &v);
             span.record("llm.output.messages", &v);
             span.record("output.value", &v);
@@ -652,7 +652,7 @@ impl Node {
         if span.is_disabled() {
             return;
         }
-        let v = serde_json::to_string(message).expect("why didn't this work?");
+        let v = genai_client::telemetry::to_json(message);
         span.record("gen_ai.output.messages", &v);
         span.record("llm.output.messages", &v);
         span.record("output.value", &v);
@@ -730,7 +730,7 @@ impl Node {
         // span.record("gen_ai.usage.output_tokens", tracing::field::Empty);
         // span.record("llm.token_count.completion", tracing::field::Empty);
         span.record("server.address", llm.chat_endpoint().unwrap());
-        let input = serde_json::to_string(&messages).unwrap();
+        let input = genai_client::telemetry::to_json(&messages);
         span.record("gen_ai.input.messages", &input);
         span.record("llm.input.messages", &input);
         // gen_ai.output.messages

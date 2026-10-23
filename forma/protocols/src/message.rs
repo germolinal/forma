@@ -263,7 +263,9 @@ pub enum FormaMessageBody {
         content: Vec<FormaMessagePart>,
         /// The tool calls proposed by the assistant
         tool_calls: Vec<OpenAIToolChoice>,
-        /// The thought signature of the part.
+        /// The thought signature of the part. Stored as it is (`null` when
+        /// there is none), but left out of telemetry.
+        #[serde(skip_serializing_if = "genai_client::telemetry::omitted")]
         thought_signature: Option<bytes::Bytes>,
         /// The bundle of each tool call that has one, by tool call ID. Only
         /// there so a reopened session renders its tool calls as the live
@@ -1040,5 +1042,29 @@ mod testing {
             LLMMessage::try_from(msg).is_err(),
             "a message carrying one must be refused too"
         );
+    }
+
+    #[test]
+    fn thought_signatures_are_stored_but_left_out_of_telemetry() {
+        let body: FormaMessageBody = serde_json::from_value(serde_json::json!({
+            "role": "assistant", "content": [], "tool_calls": [], "thought_signature": [1, 2, 3]
+        }))
+        .unwrap();
+        // What the database stores keeps it.
+        let stored = serde_json::to_value(&body).unwrap();
+        assert_eq!(stored["thought_signature"], serde_json::json!([1, 2, 3]));
+        // A span or a log does not.
+        let traced: serde_json::Value =
+            serde_json::from_str(&genai_client::telemetry::to_json(&body)).unwrap();
+        assert_eq!(traced["role"], "assistant");
+        assert!(traced.get("thought_signature").is_none());
+
+        // Without one, it is still stored as null, as before.
+        let none: FormaMessageBody = serde_json::from_value(serde_json::json!({
+            "role": "assistant", "content": [], "tool_calls": [], "thought_signature": null
+        }))
+        .unwrap();
+        let stored = serde_json::to_value(&none).unwrap();
+        assert!(stored.get("thought_signature").is_some_and(|v| v.is_null()));
     }
 }

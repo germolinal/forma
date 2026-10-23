@@ -1,0 +1,18 @@
+# The throwaway OpenTelemetry Collector run.sh starts for the `otel` modes.
+# It receives OTLP and drops it, counting what arrived: the debug exporter at
+# `basic` verbosity writes one line per batch, never the data. (The image's own
+# configuration prints every span in full, which makes the collector, not
+# Forma, the bottleneck: Forma's export queue then fills, and drops spans.)
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    traces: { receivers: [otlp], exporters: [debug] }
+    metrics: { receivers: [otlp], exporters: [debug] }
+    logs: { receivers: [otlp], exporters: [debug] }
