@@ -1,0 +1,74 @@
+---
+import { links } from "../../config/site";
+
+// From `make bench` (forma/bench), runs `fixed` and `fixed-db-indexed`.
+const stats = [
+  {
+    value: "~1 ms",
+    label: "Forma's own time per message",
+    detail:
+      "On top of the LLM, median. About 4 ms with MongoDB, including 7 round trips to the database.",
+  },
+  {
+    value: "18–49 MB",
+    label: "Memory",
+    detail: "From one conversation to 64 at once, with MongoDB.",
+  },
+  {
+    value: "~3 ms",
+    label: "CPU per message",
+    detail:
+      "The whole tool loop, streamed: 64 conversations at once keep a tenth of one core busy.",
+  },
+  {
+    value: "6,400/s",
+    label: "Messages per second",
+    detail:
+      "With an LLM that answers instantly and no database: the runtime's ceiling. 930/s with MongoDB.",
+  },
+];
+---
+
+<section class="shell section border-t">
+  <h2 class="text-3xl font-semibold sm:text-4xl">
+    Light enough for the smallest machine
+  </h2>
+  <p class="text-muted-foreground mt-4 max-w-2xl text-lg leading-relaxed">
+    An LLM takes seconds to answer; Forma adds milliseconds. A personal agent
+    runs comfortably on the smallest machine a cloud sells, and the same server
+    handles many conversations at once.
+  </p>
+
+  <dl class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {
+      stats.map((stat) => (
+        <div class="bg-card text-card-foreground flex flex-col rounded-xl border p-6">
+          <dt class="text-muted-foreground order-2 mt-1 text-sm font-medium">
+            {stat.label}
+          </dt>
+          <dd class="font-display order-1 text-3xl font-semibold tabular-nums">
+            {stat.value}
+          </dd>
+          <dd class="text-muted-foreground order-3 mt-3 text-[0.95rem] leading-relaxed">
+            {stat.detail}
+          </dd>
+        </div>
+      ))
+    }
+  </dl>
+
+  <p class="text-muted-foreground mt-6 max-w-3xl text-sm leading-relaxed">
+    Measured with <code class="font-mono">make bench</code> on an 8-core Apple Silicon
+    laptop. Each message is a full tool loop: an LLM call that asks for a tool, the
+    tool, and an LLM call that answers. The LLM is a mock, so the numbers are Forma's
+    alone; MongoDB ran on the same machine, indexed, holding 50,000 other messages.
+    Exporting traces over OpenTelemetry raises memory to about 50–70 MB. A cloud's
+    shared CPU answers fewer messages per second, but memory and CPU per message carry
+    over.
+    <a
+      href={links.bench}
+      class="text-accent-text underline-offset-4 hover:underline"
+      >Run it yourself</a
+    >.
+  </p>
+</section>

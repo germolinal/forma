@@ -30,6 +30,11 @@ export const docs = {
   evals: href("docs/documentation/evals.html"),
 } as const;
 
+/** Links into the repository. */
+export const links = {
+  bench: REPO_URL + "/tree/main/forma/bench",
+} as const;
+
 /** Primary navigation, rendered in the header. */
 export const nav: { label: string; href: string }[] = [
   { label: "Docs", href: docs.home },
