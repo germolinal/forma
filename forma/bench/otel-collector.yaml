@@ -12,6 +12,13 @@ exporters:
   debug:
     verbosity: basic
 service:
+  # The collector samples its own repeated log lines by default (the first
+  # few each second, then one in a hundred), and these are what counts what
+  # arrived: without this, the counts fall short under load.
+  telemetry:
+    logs:
+      sampling:
+        enabled: false
   pipelines:
     traces: { receivers: [otlp], exporters: [debug] }
     metrics: { receivers: [otlp], exporters: [debug] }
