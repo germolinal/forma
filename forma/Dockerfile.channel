@@ -29,5 +29,7 @@ COPY --from=build /app/target/release/forma /app/forma
 # /config/runtime.yaml (e.g., `docker run -v ./runtime.yaml:/config/runtime.yaml`,
 # or a secret mounted as a file on Cloud Run), or replaces this command. Exec
 # form does no variable expansion, so --service is left off deliberately: it is
-# resolved at runtime from Cloud Run's K_SERVICE env var instead.
-CMD ["/app/forma", "serve", "-t", "just-otel", "-r", "/config/runtime.yaml"]
+# resolved at runtime from Cloud Run's K_SERVICE env var instead. `-t otel`
+# prints logs and also sends them, with traces and metrics, to the collector at
+# OTEL_EXPORTER_OTLP_ENDPOINT, if there is one.
+CMD ["/app/forma", "serve", "-t", "otel", "-r", "/config/runtime.yaml"]

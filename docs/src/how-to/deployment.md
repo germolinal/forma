@@ -11,7 +11,7 @@ In production, Forma agents are served by **lean servers**: builds of Forma with
 
 ## The images
 
-Every release publishes four images to the GitHub Container Registry, for `linux/amd64` and `linux/arm64`:
+Every release publishes five images to the GitHub Container Registry, for `linux/amd64` and `linux/arm64`:
 
 | Image                                   | What it is                                                                                     |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -19,6 +19,7 @@ Every release publishes four images to the GitHub Container Registry, for `linux
 | `ghcr.io/germolinal/forma-multi-tenant` | A multi-tenant server: **many agents**, read from the database on every request                 |
 | `ghcr.io/germolinal/forma-manager`      | The manager, which deploys agents to multi-tenant servers                                       |
 | `ghcr.io/germolinal/forma-cli`          | The CLI, for pipelines: compiling agents (`forma expand -c`) and evaluating them (`forma eval`) |
+| `ghcr.io/germolinal/forma-sandbox`      | The sandbox where agents' code runs (the [`code`](../reference_docs/auto-codeexecution.md) tool): Python and shell, run by a Cloud Run Job (`code_execution: sandbox: cloud-run-job`) or by Docker (`local-docker`) |
 
 Each is tagged with its version (e.g., `0.9.18`), its minor version (`0.9`, which moves with patch releases) and `latest`. **Pin a version in production** (or, better, a digest: `ghcr.io/germolinal/forma@sha256:...`), so that your image doesn't change because Forma released a new one. Use the same version for the CLI that compiles your agent and the server that runs it: `forma --version` tells you which one you develop with.
 
@@ -27,12 +28,12 @@ The three server images are built on [distroless](https://github.com/GoogleConta
 | | `forma`, `forma-multi-tenant` | `forma-manager` |
 | --- | --- | --- |
 | The binary | `/app/forma` | `/app/forma-manager` |
-| Default command | `/app/forma serve -t just-otel -r /config/runtime.yaml` | `/app/forma-manager` |
+| Default command | `/app/forma serve -t otel -r /config/runtime.yaml` | `/app/forma-manager` |
 | The runtime file | Mounted (or copied) at `/config/runtime.yaml` | — |
 | The agent | `forma`: a compiled agent, passed with `-a`. `forma-multi-tenant`: none, they are in the database | — |
 | Port | `PORT`, or `8080` | `PORT`, or `3001` |
 
-> **📌 Note**: `-t just-otel` sends logs only to an OpenTelemetry collector. Without one, pass `-t console` (as the examples below do) to see them in the container's output.
+> **📌 Note**: `-t otel` prints logs to the container's output, and also sends them, with traces and metrics, to the OpenTelemetry collector at `OTEL_EXPORTER_OTLP_ENDPOINT`, if there is one (check [Observability](./observability.md)). Without a collector, it just prints.
 
 ## The runtime file
 
@@ -123,7 +124,7 @@ RUN forma expand -c > agent.yaml
 FROM ${FORMA_REGISTRY}/forma:${FORMA_VERSION}
 COPY --from=compile /work/agent.yaml /app/agent.yaml
 COPY runtime.yaml /config/runtime.yaml
-CMD ["/app/forma", "serve", "-t", "console", "-a", "/app/agent.yaml", "-r", "/config/runtime.yaml"]
+CMD ["/app/forma", "serve", "-t", "otel", "-a", "/app/agent.yaml", "-r", "/config/runtime.yaml"]
 ```
 
 (The file in your project has comments explaining each line. If your project was created before it existed, copy it from here.)
@@ -151,9 +152,24 @@ Note that:
 * Secrets are never part of the image. Only the agent and the runtime file are.
 * To change the runtime file without rebuilding, mount another one over it: `-v ./runtime.yaml:/config/runtime.yaml`.
 * Production servers listen on every network interface (`0.0.0.0`), while the CLI only listens to requests coming from your own computer (`127.0.0.1`).
-* `-t console` prints logs. `-t otel` also sends traces and metrics to an OpenTelemetry collector (check the [Observability](./observability.md) section).
+* `-t otel` prints logs, and sends them with traces and metrics to an OpenTelemetry collector when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (check the [Observability](./observability.md) section).
 
-You can now talk to it exactly like you did with `forma serve` (check the [API Key](./forma-agent-api-key.md#3-make-requests) section). To run it on a cloud service, check [Deploying to the cloud](./cloud-deployment.md).
+You can now talk to it exactly like you did with `forma serve` (check the [API Key](./forma-agent-api-key.md#3-make-requests) section). To run it on Google Cloud, check [Deploying to Google Cloud](./cloud-deployment.md).
+
+### Without building an image
+
+You can also skip your own image, and give the published one your files when it starts: mount the compiled agent and the runtime file, and point the server at them.
+
+```sh
+forma expand -c > agent.yaml
+docker run -p 8080:8080 --env-file .env \
+  -v "$PWD/agent.yaml:/agent/agent.yaml:ro" \
+  -v "$PWD/runtime.yaml:/agent/runtime.yaml:ro" \
+  ghcr.io/germolinal/forma:0.9.18 \
+  /app/forma serve -t otel -a /agent/agent.yaml -r /agent/runtime.yaml
+```
+
+Updating the agent is then replacing a file and restarting the container, with no build. It is how [Deploying to Google Cloud](./cloud-deployment.md) works, with the files in a bucket mounted into the service. Building your own image is better when something else should not be able to change the agent (an image is immutable, and can be pinned by digest), or when your platform cannot mount files.
 
 ### Compiling in a pipeline
 
@@ -177,7 +193,7 @@ cargo build --release --bin forma --no-default-features
 And run it with your compiled agent:
 
 ```sh
-PORT=8080 FORMA_AGENT_KEY=key-not-for-production ./target/release/forma serve -t console -a agent.yaml -r runtime.yaml
+PORT=8080 FORMA_AGENT_KEY=key-not-for-production ./target/release/forma serve -a agent.yaml -r runtime.yaml
 ```
 
 `-a` is the agent's file (`agent` by default), and `-r` the runtime file (`runtime.yaml` by default). If either has no extension, `.yaml` is added: `-a agent` and `-a agent.yaml` are the same.
@@ -207,11 +223,10 @@ docker run -d -p 3001:3001 -e SESSIONS_DB_URL ghcr.io/germolinal/forma-manager:0
 docker run -d -p 8080:8080 \
   -e SESSIONS_DB_URL -e FORMA_AGENT_KEY=key-not-for-production \
   -v "$PWD/runtime.yaml:/config/runtime.yaml:ro" \
-  ghcr.io/germolinal/forma-multi-tenant:0.9.18 \
-  /app/forma serve -t console -r /config/runtime.yaml
+  ghcr.io/germolinal/forma-multi-tenant:0.9.18
 ```
 
-(The last line replaces the image's command only to print logs; without it, they go to an OpenTelemetry collector.) On a cloud service, the runtime file is mounted the same way, e.g., from a secret: Cloud Run mounts files only from Secret Manager.
+On a cloud service, the runtime file is mounted the same way, e.g., from a secret: Cloud Run mounts files only from Secret Manager.
 
 To build them from source instead, use the `multi-tenant` feature for the runtime and `api` for the manager (check [Building Forma from source](./building-forma.md)):
 

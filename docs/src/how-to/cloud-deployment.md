@@ -1,185 +1,281 @@
-# Deploying to the cloud
+# Deploying to Google Cloud, step by step
 
-The [Deployment](./deployment.md) section explains what a production server is made of: Forma's `forma` image, your compiled agent, and a `runtime.yaml` saying how clients talk to it and where conversations are kept. This guide puts one in the cloud, end to end: your agent in a container, running on a managed service, keeping its conversations in a database, and answering on the internet.
+This guide puts **one personal agent** on **Google Cloud**, from an empty account to an agent that answers on the internet. Every step is a command you can copy, and each one says what it does and how to check that it worked.
 
-We will use [Google Cloud Run](https://cloud.google.com/run), which runs containers without managing servers. Nothing here depends on it, though: any service that runs a container and gives it a public HTTPS address works the same way (check [Other container services](#other-container-services)).
+It is written for Google Cloud, using:
 
-> **💡 Tip**: This guide is written so that every step can be followed as it is, by you or by a coding assistant. Check [Asking a coding assistant to do it](#asking-a-coding-assistant-to-do-it).
+* **[Cloud Run](https://cloud.google.com/run)** to run the agent. It starts the agent when a message arrives, and stops it when there are none, so an agent nobody is talking to costs (almost) nothing.
+* **[Firestore](https://cloud.google.com/firestore/mongodb-compatibility/docs/overview)** (with MongoDB compatibility) to keep conversations.
+* **[Secret Manager](https://cloud.google.com/secret-manager)** to keep API keys and passwords.
+* Optionally, **[Cloud Storage](https://cloud.google.com/storage)** buckets for workspaces and knowledge bases, and a **Cloud Run Job** that runs the agent's code in a sandbox.
+
+You build nothing: Cloud Run runs Forma's published image (`ghcr.io/germolinal/forma`), and your agent reaches it as two files in a bucket.
+
+> **💡 Tip**: Prefer infrastructure as code? The [`deployments/gcp`](https://github.com/germolinal/forma/tree/main/deployments/gcp) folder of the Forma repository creates the same things with Terraform. On another cloud, the [Deployment](./deployment.md) section explains what a server needs, and your project's `Dockerfile` builds an image that runs anywhere.
 
 ## What you will build
 
 ```text
-          ┌──────────────── Cloud Run service ─────────────────┐
-client ──▶│  /app/forma serve -a /app/agent.yaml               │──▶ LLM provider
- (web app,│  (Forma's server, with your compiled agent)        │
-WhatsApp, └───────────────────────┬────────────────────────────┘
-Telegram)                         ▼
-                        MongoDB-compatible database
-                        (conversations, in `forma-db`)
+                  ┌──────── Cloud Run service ────────┐
+ you (web app, ──▶│  ghcr.io/germolinal/forma         │──▶ the LLM (e.g., Gemini)
+ WhatsApp,        │  reads /agent/agent.yaml          │
+ Telegram)        │    and /agent/runtime.yaml  ◀─────┼── bucket: your agent's files
+                  └────────────────┬──────────────────┘
+                                   ▼
+                    Firestore database `forma-db`
+                         (your conversations)
 ```
 
-* **One container image**, built by your project's `Dockerfile`: Forma's published `forma` image, plus your compiled agent and its `runtime.yaml`.
-* **One database**, so that conversations survive restarts, and several copies of the container can share them (Forma agents are stateless).
-* **Secrets** (API keys, tokens, the database's address) kept out of the image, and given to the container when it starts.
+It takes about an hour the first time, most of it waiting for things to be created.
 
-## 0. Before you start
+## 1. Install the tools, and log in
 
-You will need:
+You need:
 
-* Your agent's project, working with `forma dev` (check [Dory, your first Forma agent](./dory.md)), with the `Dockerfile` that `forma init` creates (if your project is older, copy it from [Deployment](./deployment.md#2-the-dockerfile))
-* [Docker](https://docs.docker.com/get-docker/), and the [`gcloud` CLI](https://cloud.google.com/sdk/docs/install), logged in (`gcloud auth login`)
-* A Google Cloud project, with billing enabled
-* A MongoDB-compatible database you can reach from the internet, and its connection string (e.g., a free [MongoDB Atlas](https://www.mongodb.com/atlas) cluster), plus [`mongosh`](https://www.mongodb.com/docs/mongodb-shell/)
+* **The Forma CLI**, the one you developed your agent with (`forma --version`). If you don't have it, check [Getting started](./getting-started.md#installing-the-forma-cli).
+* **The `gcloud` CLI**. Follow [Google's installation guide](https://cloud.google.com/sdk/docs/install).
+* **A Google account**, and a credit card for billing. A personal agent usually stays within, or close to, the free tiers, but Google asks for one anyway.
 
-Then, decide three things, and write them down as shell variables. Every command below uses them:
+Log in:
 
 ```sh
-export PROJECT=my-gcp-project      # Your Google Cloud project's ID
-export REGION=us-central1          # Where the service runs
-export SERVICE=dory                # The name of the Cloud Run service
-export CLIENT=sse                  # How clients talk to it: sync, sse, ai-sdk-v5, whatsapp or telegram
-export IMAGE=$REGION-docker.pkg.dev/$PROJECT/forma/$SERVICE
+gcloud auth login
 ```
 
-| `CLIENT`    | Choose it for...                                                   | Its own variables                                     |
-| ----------- | ------------------------------------------------------------------ | ----------------------------------------------------- |
-| `sync`      | A back-end that sends a message and waits for the answer          | `FORMA_AGENT_KEY` ([details](./forma-agent-api-key.md)) |
-| `sse`       | The same, streaming progress ([HTTP API](./http-api.md))          | `FORMA_AGENT_KEY`                                     |
-| `ai-sdk-v5` | A web front-end built with Vercel's AI SDK                         | `FORMA_AGENT_KEY`                                     |
-| `whatsapp`  | A WhatsApp number ([guide](./whatsapp.md))                        | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` |
-| `telegram`  | A Telegram bot ([guide](./telegram.md))                           | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_SECRET_TOKEN`         |
+> **✅ Check progress**: `gcloud auth list` shows your account, with a `*` next to it.
 
-And turn on the services this guide uses:
+## 2. Create a project
+
+A Google Cloud project holds everything this guide creates. Giving your agent its own project keeps it apart from anything else, and makes it easy to remove.
 
 ```sh
+export PROJECT=my-forma-agent-1234   # Must be unique across all of Google Cloud: add some digits
+gcloud projects create $PROJECT
 gcloud config set project $PROJECT
-gcloud services enable run.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
 ```
 
-## 1. Get your agent ready
+Then link it to a billing account. The easiest way is in the console: open [Billing](https://console.cloud.google.com/billing/linkedaccount), choose your project, and link it. (Or, with the CLI: `gcloud billing accounts list`, then `gcloud billing projects link $PROJECT --billing-account=<ACCOUNT_ID>`.)
 
-In your agent's project, make sure `runtime.yaml` names your client, and keeps conversations in the database (the CLI keeps them in files):
+> **✅ Check progress**: `gcloud billing projects describe $PROJECT` says `billingEnabled: true`.
+
+## 3. Write down your choices
+
+Every command below uses these variables. If you open a new terminal, set them again.
+
+```sh
+export PROJECT=my-forma-agent-1234    # From step 2
+export REGION=us-central1             # Where everything runs. Choose one close to you (e.g., europe-west1, southamerica-east1)
+export SERVICE=dory                   # Your agent's name, in lowercase
+export FORMA_VERSION=0.9.18           # Your Forma CLI's version (`forma --version`)
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
+export SA=$SERVICE@$PROJECT.iam.gserviceaccount.com
+export AGENT_BUCKET=$SERVICE-agent-$PROJECT_NUMBER
+```
+
+## 4. Turn on the services
+
+A new project has most services turned off. Turn on the ones this guide uses:
+
+```sh
+gcloud services enable run.googleapis.com firestore.googleapis.com secretmanager.googleapis.com \
+  storage.googleapis.com aiplatform.googleapis.com iam.googleapis.com
+```
+
+(It can take a minute or two.)
+
+## 5. Create the database
+
+Your agent's conversations are kept in a Firestore database that speaks MongoDB's language, which is what Forma talks to. Create it, named `forma-db` (the name Forma uses):
+
+```sh
+gcloud firestore databases create --database=forma-db --location=$REGION \
+  --edition=enterprise --enable-mongodb-compatible-data-access
+```
+
+> **📌 Note**: Not every region has Firestore with MongoDB compatibility. If this fails, choose another from [the list](https://cloud.google.com/firestore/mongodb-compatibility/docs/locations) for `--location` (e.g., `nam5` for the United States, `eur3` for Europe), and use that same value wherever this step says `$REGION`.
+
+Then create the three indexes Forma's queries need. Without them, every message makes the database read every conversation, and your agent gets slower over time:
+
+```sh
+index() {
+  gcloud firestore indexes composite create --database=forma-db --collection-group=$1 \
+    --query-scope=collection-group --density=dense --api-scope=mongodb-compatible-api "${@:2}" --async
+}
+index messages --field-config=field-path=session_id,order=ascending --field-config=field-path=created_at,order=descending
+index messages --field-config=field-path=id,order=ascending --field-config=field-path=session_id,order=ascending
+index sessions --field-config=field-path=user_id,order=ascending --field-config=field-path=agent_id,order=ascending --field-config=field-path=created_at,order=descending
+```
+
+They take a few minutes to build. You can carry on in the meantime.
+
+Finally, create a user for Forma, with its password, and let it use this database (and no other):
+
+```sh
+gcloud firestore user-creds create forma --database=forma-db
+```
+
+This prints the user's password. **Copy it now**: it is shown only once. Then:
+
+```sh
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="principal://firestore.googleapis.com/projects/$PROJECT_NUMBER/name/databases/forma-db/userCreds/forma" \
+  --role=roles/datastore.user \
+  --condition="expression=resource.name == \"projects/$PROJECT/databases/forma-db\",title=forma-db-only"
+```
+
+Now, put together the database's address (its *connection string*), which Forma reads from `SESSIONS_DB_URL`. Replace `PASSWORD` with the password you copied:
+
+```sh
+export DB_HOST=$(gcloud firestore databases describe --database=forma-db --format='value(uid)').$REGION.firestore.goog
+export SESSIONS_DB_URL="mongodb://forma:PASSWORD@$DB_HOST:443/forma-db?loadBalanced=true&tls=true&authMechanism=SCRAM-SHA-256&retryWrites=false"
+```
+
+> **✅ Check progress**: `gcloud firestore indexes composite list --database=forma-db` lists three indexes. (`READY` once they are built.)
+
+## 6. Get your agent ready
+
+In your agent's project, three things:
+
+**1. A hosted LLM.** Ollama runs on your computer, so it won't be there in the cloud. On Google Cloud, the simplest is Google's own models (`vertex-ai`), which need no API key: your agent uses its Google Cloud identity (step 8). For instance:
 
 ```yaml
-client: sse          # your $CLIENT
+llm:
+  provider: vertex-ai
+  model: gemini-2.5-flash
+```
+
+(Check [`VertexAI`](../reference_docs/auto-vertexai.md) for every option. Other providers work too; their API key goes in step 9.) Try the agent with `forma dev` after changing it.
+
+**2. The runtime file.** In `runtime.yaml`, choose how you will talk to your agent (`client`), and keep conversations in the database:
+
+```yaml
+client: telegram     # or sse, sync, ai-sdk-v5, whatsapp
 storage: mongo
 ```
 
-In the `Dockerfile`, pin Forma's version to the one you develop with (`forma --version`), so the image doesn't change when Forma releases a new one:
+| `client`    | Choose it for...                                                   | Secrets it needs (step 9)                             |
+| ----------- | ------------------------------------------------------------------ | ----------------------------------------------------- |
+| `telegram`  | A Telegram bot: the easiest way to chat with a personal agent ([guide](./telegram.md)) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_SECRET_TOKEN`         |
+| `whatsapp`  | A WhatsApp number ([guide](./whatsapp.md))                        | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` |
+| `sse`, `sync` | Your own app or script, through the [HTTP API](./http-api.md)  | `FORMA_AGENT_KEY` ([details](./forma-agent-api-key.md)) |
+| `ai-sdk-v5` | A web front-end built with Vercel's AI SDK                         | `FORMA_AGENT_KEY`                                     |
 
-```dockerfile
-ARG FORMA_VERSION=0.9.18
-```
-
-Then, check that the agent compiles, and what it needs at runtime:
-
-```sh
-forma expand -c > /dev/null
-```
-
-Every LLM provider and tool your agent uses reads its own variables (e.g., `OPENAI_API_KEY` for OpenAI, `TAVILY_API_KEY` for web search; check the [Reference Documentation](../reference_docs/auto-genaiclient.md)). Write them down: they go in step 4.
-
-> **📌 Note**: An agent on Ollama will not work in the cloud as it is, as Ollama runs on your computer. Use a hosted provider (e.g., `vertex-ai` or `openai`) before deploying.
-
-## 2. Build the image
-
-The `Dockerfile` compiles your agent with the `forma-cli` image, and copies it, with `runtime.yaml`, into the `forma` image. Build it, and push it to a registry Cloud Run can read from:
+**3. The compiled agent.** The server reads your agent as a single, compiled file:
 
 ```sh
-gcloud artifacts repositories create forma --repository-format=docker --location=$REGION
-gcloud auth configure-docker $REGION-docker.pkg.dev
-
-docker build --platform linux/amd64 -t $IMAGE .
-docker push $IMAGE
+forma expand -c > agent.yaml
 ```
 
-(The repository only needs to be created once.)
+> **❗Important**: Do not forget the `-c`. Without it, the server refuses to start (`the agent ... has no nodes`).
 
-> **📌 Note**: Cloud Run runs `linux/amd64` images, hence `--platform linux/amd64`. Forma's images are published for both `linux/amd64` and `linux/arm64`, so this is quick on any computer: nothing is compiled, apart from your agent.
+## 7. Upload your agent's files
 
-The image's command, `forma serve -t console`, sends logs to the container's output, which Cloud Run collects. (To send traces and metrics to an OpenTelemetry collector as well, use `-t otel`, and check [Observability and Monitoring](./observability.md).)
-
-## 3. Prepare the database
-
-Forma keeps everything in a database called `forma-db`, and creates what it needs as it goes. It does not create indexes, though, and without them every message makes the database read every conversation. Create them once, with `mongosh`:
+Create a bucket for `agent.yaml` and `runtime.yaml`, and copy them in. (Neither holds secrets: those go in step 9.)
 
 ```sh
-export SESSIONS_DB_URL='mongodb+srv://user:password@cluster0.example.mongodb.net/'
-
-mongosh "$SESSIONS_DB_URL" --eval '
-  const d = db.getSiblingDB("forma-db");
-  d.messages.createIndex({ session_id: 1, created_at: -1 });
-  d.messages.createIndex({ id: 1, session_id: 1 });
-  d.sessions.createIndex({ user_id: 1, agent_id: 1, created_at: -1 });
-'
+gcloud storage buckets create gs://$AGENT_BUCKET --location=$REGION \
+  --uniform-bucket-level-access --public-access-prevention
+gcloud storage cp agent.yaml runtime.yaml gs://$AGENT_BUCKET/
 ```
 
-Here, `SESSIONS_DB_URL` is your database's connection string. Make sure the database accepts connections from Cloud Run: on MongoDB Atlas, allow access from anywhere (`0.0.0.0/0`) in **Network Access**, and rely on the user and password, or connect through a private network.
+> **✅ Check progress**: `gcloud storage ls gs://$AGENT_BUCKET` lists both files.
 
-## 4. Store the secrets
+## 8. Give your agent an identity
 
-Secrets go in [Secret Manager](https://cloud.google.com/secret-manager), never in the image. Create one per variable: the database's address, your client's own variables (step 0), and those your agent needs (step 1). For example, for the `sse` client:
+Your agent runs as a *service account*: a Google Cloud identity of its own, which can only do what you allow it to. Create it, and let it read its files and use Google's models:
 
 ```sh
-secret() { printf '%s' "$2" | gcloud secrets create "$1" --data-file=- ; }
+gcloud iam service-accounts create $SERVICE --display-name="Forma agent ($SERVICE)"
 
-secret sessions-db-url "$SESSIONS_DB_URL"
-secret forma-agent-key "$(openssl rand -hex 32)"   # The API key clients will send
-secret openai-api-key  "sk-..."
+gcloud storage buckets add-iam-policy-binding gs://$AGENT_BUCKET \
+  --member=serviceAccount:$SA --role=roles/storage.objectViewer
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member=serviceAccount:$SA --role=roles/aiplatform.user
 ```
 
-Then, create the identity the service runs as, and let it read them:
+## 9. Store the secrets
+
+Secrets go in Secret Manager, never in your files. Create one for the database's address, and one for each secret your client needs (the table in step 6) and your agent's tools need (e.g., `TAVILY_API_KEY` for web search, `OPENAI_API_KEY` for OpenAI's models). Then let your agent read them.
+
+For instance, for a Telegram bot:
 
 ```sh
-gcloud iam service-accounts create $SERVICE
-export SA=$SERVICE@$PROJECT.iam.gserviceaccount.com
+secret() {
+  printf '%s' "$2" | gcloud secrets create "$1" --data-file=-
+  gcloud secrets add-iam-policy-binding "$1" --member=serviceAccount:$SA --role=roles/secretmanager.secretAccessor
+}
 
-for s in sessions-db-url forma-agent-key openai-api-key; do
-  gcloud secrets add-iam-policy-binding $s \
-    --member serviceAccount:$SA --role roles/secretmanager.secretAccessor
-done
+secret sessions-db-url       "$SESSIONS_DB_URL"
+secret telegram-bot-token    "123456:ABC-..."              # From @BotFather
+secret telegram-secret-token "$(openssl rand -hex 32)"     # A password you make up
 ```
 
-> **📌 Note**: If your agent uses Google's models (`vertex-ai`) or other Google Cloud services, it uses this identity too, rather than an API key. Grant it what it needs (e.g., `roles/aiplatform.user` for Vertex AI), and set `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` in the next step.
+And for `sse`, `sync` or `ai-sdk-v5`, instead of the Telegram ones:
 
-## 5. Deploy
+```sh
+secret forma-agent-key "$(openssl rand -hex 32)"           # The key your app will send
+```
+
+> **✅ Check progress**: `gcloud secrets list` shows them all.
+
+## 10. Deploy
+
+This starts your agent: Forma's published image, with your bucket mounted at `/agent`, and every secret given to it as an environment variable. Adjust the `--set-secrets` line to your secrets (`VARIABLE=secret-name:latest`, separated by commas):
 
 ```sh
 gcloud run deploy $SERVICE \
-  --image $IMAGE \
-  --region $REGION \
-  --service-account $SA \
-  --allow-unauthenticated \
-  --timeout 3600 \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=$PROJECT,GOOGLE_CLOUD_LOCATION=$REGION \
-  --set-secrets SESSIONS_DB_URL=sessions-db-url:latest,FORMA_AGENT_KEY=forma-agent-key:latest,OPENAI_API_KEY=openai-api-key:latest
+  --image=ghcr.io/germolinal/forma:$FORMA_VERSION \
+  --region=$REGION \
+  --service-account=$SA \
+  --execution-environment=gen2 \
+  --add-volume=name=agent,type=cloud-storage,bucket=$AGENT_BUCKET,readonly=true \
+  --add-volume-mount=volume=agent,mount-path=/agent \
+  --command=/app/forma \
+  --args=serve,-t,otel,-a,/agent/agent.yaml,-r,/agent/runtime.yaml \
+  --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT,GOOGLE_CLOUD_LOCATION=$REGION \
+  --set-secrets=SESSIONS_DB_URL=sessions-db-url:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,TELEGRAM_SECRET_TOKEN=telegram-secret-token:latest \
+  --timeout=3600 \
+  --max-instances=2 \
+  --allow-unauthenticated
 ```
 
-Each `--set-secrets` entry is `VARIABLE=secret-name:version`: add one for every secret of step 4.
+What some of those mean:
 
 | Flag                      | Why                                                                                                   |
 | ------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `--allow-unauthenticated` | Clients reach the service directly. It is still protected: by the API key (`sync`, `sse`, `ai-sdk-v5`), or by the platform's signature (`whatsapp`, `telegram`) |
-| `--timeout 3600`          | An answer can take minutes (tools, long documents), and Cloud Run cuts requests after 5 minutes by default    |
+| `--add-volume`, `--add-volume-mount` | Your bucket appears in the container as the folder `/agent` (Cloud Storage volumes need `--execution-environment=gen2`) |
+| `--command`, `--args`     | Runs Forma's server with your agent and runtime file                                                  |
+| `--timeout=3600`          | An answer can take minutes (tools, long documents), and Cloud Run cuts requests after 5 minutes by default |
+| `--max-instances=2`       | A ceiling on how many copies run at once: a personal agent needs very few, and it caps the bill        |
+| `--allow-unauthenticated` | Telegram, WhatsApp and your apps reach the agent directly. It is still protected: by the platform's signature, or by the API key |
 
-Cloud Run sets `PORT` itself, and the server listens on it. When the deploy finishes, it prints the service's address:
+When it finishes, it prints your agent's address:
 
 ```text
 Service URL: https://dory-123456789012.us-central1.run.app
 ```
 
-> **✅ Check progress**: Look at the logs, with `gcloud run services logs read $SERVICE --region $REGION`. You should see `Listening on 0.0.0.0:8080`.
+> **✅ Check progress**: `gcloud run services logs read $SERVICE --region=$REGION` shows `Listening on 0.0.0.0:8080`.
 
-## 6. Talk to it
+## 11. Talk to it
 
-What comes next depends on the client:
+```sh
+export URL=$(gcloud run services describe $SERVICE --region=$REGION --format='value(status.url)')
+```
 
-* **`sync`, `sse` and `ai-sdk-v5`**: your clients call the service's address. Try it with the [HTTP API](./http-api.md):
+* **Telegram**: tell Telegram where your agent is, with the bot's token and your secret token (check [step 4 of the Telegram guide](./telegram.md#4-tell-telegram-where-your-agent-is)):
 
   ```sh
-  export URL=https://dory-123456789012.us-central1.run.app
-  export KEY=$(gcloud secrets versions access latest --secret forma-agent-key)
+  curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
+    -d "url=$URL/v1/chat" -d "secret_token=<SECRET_TOKEN>"
+  ```
 
+  Then send your bot a message.
+* **WhatsApp**: in Meta's App Dashboard, set the **Callback URL** to `$URL/v1/chat` (check [step 5 of the WhatsApp guide](./whatsapp.md#5-go-to-meta-and-connect-the-webhook)).
+* **`sse`, `sync`, `ai-sdk-v5`**: call the [HTTP API](./http-api.md):
+
+  ```sh
+  export KEY=$(gcloud secrets versions access latest --secret=forma-agent-key)
   SESSION=$(curl -s $URL/v1/init -H "X-API-Key: $KEY" -H "X-User-ID: me" | sed 's/.*"session_id":"\([^"]*\)".*/\1/')
   curl -N -X POST $URL/v1/chat \
     -H "X-API-Key: $KEY" -H "X-User-ID: me" -H "X-Session-ID: $SESSION" \
@@ -187,69 +283,180 @@ What comes next depends on the client:
     -d '{"role":"user","content":"Hi!"}'
   ```
 
-* **`whatsapp`**: in Meta's App Dashboard, set the **Callback URL** to `$URL/v1/chat` (check [step 5 of the WhatsApp guide](./whatsapp.md#5-go-to-meta-and-connect-the-webhook)).
-* **`telegram`**: register `$URL/v1/chat` with `setWebhook`, with your secret token (check [step 4 of the Telegram guide](./telegram.md#4-tell-telegram-where-your-agent-is)).
+> **✅ Check progress**: Does your agent answer? 🎉
 
-> **✅ Check progress**: Does your agent answer?
+## Extra A: workspaces and knowledge bases
+
+Workspaces (folders of documents the agent reads and writes), scrapbooks (private notes per user) and knowledge bases (`google-knowledgebase`, `google-workspace` tools) live in a Cloud Storage bucket.
+
+**1. Create the bucket**, and let your agent read and write it:
+
+```sh
+export WORKSPACES_BUCKET=workspaces-$PROJECT_NUMBER
+gcloud storage buckets create gs://$WORKSPACES_BUCKET --location=$REGION \
+  --uniform-bucket-level-access --public-access-prevention
+gcloud storage buckets add-iam-policy-binding gs://$WORKSPACES_BUCKET \
+  --member=serviceAccount:$SA --role=roles/storage.objectUser
+```
+
+**2. Let your agent sign links to its files.** It hands out short-lived links (to files it shares, and to code runs), signed as itself, so no key file ever exists:
+
+```sh
+gcloud services enable iamcredentials.googleapis.com
+gcloud iam service-accounts add-iam-policy-binding $SA \
+  --member=serviceAccount:$SA --role=roles/iam.serviceAccountTokenCreator
+```
+
+**3. Tell Forma**, in `runtime.yaml`, and upload it:
+
+```yaml
+workspaces:
+  store: gcs
+```
+
+```sh
+gcloud storage cp runtime.yaml gs://$AGENT_BUCKET/
+```
+
+**4. Give the service the bucket's name** (this also restarts it, so it reads the new `runtime.yaml`):
+
+```sh
+gcloud run services update $SERVICE --region=$REGION --update-env-vars=WORKSPACES_BUCKET=$WORKSPACES_BUCKET
+```
+
+To put documents in a knowledge base, copy them into the bucket under the workspace's folder (its `workspace_id`), e.g., `gcloud storage cp -r ./handbook gs://$WORKSPACES_BUCKET/`. A knowledge base in **another** bucket (its `bucket` field) needs read access there too: `gcloud storage buckets add-iam-policy-binding gs://<that-bucket> --member=serviceAccount:$SA --role=roles/storage.objectViewer`.
+
+## Extra B: running code
+
+The [`code`](../reference_docs/auto-codeexecution.md) tool lets your agent run Python and shell commands. On Google Cloud, each run is an execution of a Cloud Run Job, running Forma's published sandbox (`ghcr.io/germolinal/forma-sandbox`). It needs Extra A first: runs keep their files in the workspaces bucket.
+
+Code written by an LLM is not trusted, so the sandbox gets nothing: an identity with no permissions at all, and a network with no internet. It reaches its files only through the links your agent signs for each run.
+
+**1. An identity with no permissions:**
+
+```sh
+gcloud iam service-accounts create $SERVICE-sandbox --display-name="Forma sandbox (no roles, on purpose)"
+```
+
+**2. A network without internet.** It has no router to the internet, only a private path to Cloud Storage (for the signed links):
+
+```sh
+gcloud services enable compute.googleapis.com
+gcloud compute networks create $SERVICE-sandbox --subnet-mode=custom
+gcloud compute networks subnets create $SERVICE-sandbox --network=$SERVICE-sandbox \
+  --region=$REGION --range=10.80.0.0/24 --enable-private-ip-google-access
+```
+
+**3. The job:**
+
+```sh
+gcloud run jobs create $SERVICE-code-execution \
+  --image=ghcr.io/germolinal/forma-sandbox:$FORMA_VERSION \
+  --region=$REGION \
+  --service-account=$SERVICE-sandbox@$PROJECT.iam.gserviceaccount.com \
+  --network=$SERVICE-sandbox --subnet=$SERVICE-sandbox --vpc-egress=all-traffic \
+  --tasks=1 --max-retries=0 --task-timeout=360s --cpu=1 --memory=2Gi
+```
+
+**4. Let your agent start it, and follow its runs** (on this job only):
+
+```sh
+for role in roles/run.jobsExecutorWithOverrides roles/run.viewer; do
+  gcloud run jobs add-iam-policy-binding $SERVICE-code-execution --region=$REGION \
+    --member=serviceAccount:$SA --role=$role
+done
+```
+
+**5. Keep what the code prints out of the logs** (it is your data):
+
+```sh
+gcloud logging sinks update _Default --add-exclusion=name=$SERVICE-sandbox-output,filter='resource.type="cloud_run_job" AND resource.labels.job_name="'$SERVICE'-code-execution" AND (log_id("run.googleapis.com/stdout") OR log_id("run.googleapis.com/stderr"))'
+```
+
+**6. Delete old runs' files after a day**, so the bucket doesn't grow forever:
+
+```sh
+cat > lifecycle.json <<'EOF'
+{"rule": [{"action": {"type": "Delete"}, "condition": {"age": 1, "matchesPrefix": ["runs/"]}}]}
+EOF
+gcloud storage buckets update gs://$WORKSPACES_BUCKET --lifecycle-file=lifecycle.json
+```
+
+**7. Tell Forma**, in `runtime.yaml`, upload it, and give the service the job's name:
+
+```yaml
+code_execution:
+  sandbox: cloud-run-job
+```
+
+```sh
+gcloud storage cp runtime.yaml gs://$AGENT_BUCKET/
+gcloud run services update $SERVICE --region=$REGION --update-env-vars=CODE_EXECUTION_JOB=$SERVICE-code-execution
+```
 
 ## Updating your agent
 
-Every change to your agent is a new image, deployed on top of the old one:
+Compile it again, upload it, and restart the service, which then reads the new file:
 
 ```sh
-docker build --platform linux/amd64 -t $IMAGE .
-docker push $IMAGE
-gcloud run deploy $SERVICE --image $IMAGE --region $REGION
+forma expand -c > agent.yaml
+gcloud storage cp agent.yaml gs://$AGENT_BUCKET/
+gcloud run services update $SERVICE --region=$REGION --update-env-vars=AGENT_UPDATED=$(date +%s)
 ```
 
-Conversations are in the database, so they carry on. The new version answers the next message: for a while, there may be messages being answered by the old one.
+(Changing a variable is what makes Cloud Run start a new copy; its value doesn't matter.) Conversations are in the database, so they carry on.
 
-To move to a newer Forma, change `FORMA_VERSION` in the `Dockerfile`, and update your CLI to the same version: the agent you test is then the agent you ship.
+To move to a newer Forma, update your CLI, compile again, and deploy the new image (and, with Extra B, the new sandbox):
 
-> **💡 Tip**: Before deploying a change, [evaluate it](./evaluations.md): a new image is a good moment to catch a prompt that got worse. In a CI/CD pipeline, the `ghcr.io/germolinal/forma-cli` image runs `forma eval` (check [Deployment](./deployment.md#compiling-in-a-pipeline)).
+```sh
+gcloud run services update $SERVICE --region=$REGION --image=ghcr.io/germolinal/forma:$FORMA_VERSION
+gcloud run jobs update $SERVICE-code-execution --region=$REGION --image=ghcr.io/germolinal/forma-sandbox:$FORMA_VERSION
+```
 
-## Other container services
+> **💡 Tip**: Before uploading a change, [evaluate it](./evaluations.md): it is a good moment to catch a prompt that got worse.
 
-Every step above, except steps 4 and 5, is the same anywhere. Whatever service you use, it needs to:
+## Removing everything
 
-1. **Run a container** (Forma's images exist for `linux/amd64` and `linux/arm64`; build yours for the service's architecture), and give it a public HTTPS address (WhatsApp and Telegram refuse anything else).
-2. **Pass the variables** of steps 1, 4 and the table in step 0 to the container, preferably from its own secrets store.
-3. **Set `PORT`**, or let the server use its default (`8080`), and send requests there.
-4. **Allow long requests**: an hour, if possible. A request cut short is an answer lost.
-5. **Reach the database**, and the LLM provider.
+The simplest way is to delete the project, which deletes everything in it (after a 30-day grace period):
+
+```sh
+gcloud projects delete $PROJECT
+```
 
 ## If something does not work
 
 | What you see                                                          | What to check                                                                                     |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `docker build` fails at `forma expand -c`                             | The agent does not compile: run `forma expand -c` in your project to see why (step 1). MCP tools that need `forma login` can't be compiled in the build: check [Deployment](./deployment.md#2-the-dockerfile) |
-| `the agent in '/app/agent.yaml' has no nodes`                         | The agent in the image was not compiled: did you replace `forma expand -c` with a copy of an uncompiled file? |
-| `exec format error`, or the container does not start                  | The image is not `linux/amd64`: build with `--platform linux/amd64`                               |
-| `Missing environment variable: ...`                                   | That variable is not set in step 5. Each client fails at start without its own (step 0)           |
-| The service starts, but every message fails with a database error     | `SESSIONS_DB_URL` is wrong, or the database does not accept connections from the service          |
-| `Permission denied on secret`                                         | The service account cannot read a secret: grant it `roles/secretmanager.secretAccessor` (step 4)  |
-| Answers are cut, or the client sees a `504`                           | The request timeout: deploy with `--timeout 3600`                                                 |
-| Answers get slower as conversations pile up                           | The database's indexes (step 3)                                                                   |
+| The deploy fails, and the logs say `could not load agent`             | The files are not in the bucket (step 7), or the agent cannot read it (step 8)                    |
+| `the agent in '/agent/agent.yaml' has no nodes`                       | It was not compiled: `forma expand -c > agent.yaml` (step 6), and upload it again                 |
+| `Missing environment variable: ...`                                   | That secret is not in `--set-secrets` (step 10). Each client fails at start without its own       |
+| `Permission denied on secret`                                         | The agent cannot read a secret: the `add-iam-policy-binding` of step 9                            |
+| Every message fails with a database error                             | `SESSIONS_DB_URL` (step 5): the password, the region in the host, or the user's permission        |
+| Errors from Vertex AI (`403`, `PERMISSION_DENIED`)                    | `roles/aiplatform.user` (step 8), and `GOOGLE_CLOUD_PROJECT`/`GOOGLE_CLOUD_LOCATION` (step 10)    |
+| Answers are cut, or the client sees a `504`                           | The request timeout: `--timeout=3600`                                                             |
+| Answers get slower as conversations pile up                           | The database's indexes (step 5)                                                                   |
+| Workspace tools fail with `WORKSPACES_BUCKET`, or links fail to sign  | Extra A: the variable, and the `serviceAccountTokenCreator` role                                  |
+| Code runs fail to start                                               | Extra B: `CODE_EXECUTION_JOB`, and the two roles on the job                                       |
 
 ## Asking a coding assistant to do it
 
 Each step above is a command, so a coding assistant (e.g., [Claude Code](https://claude.com/claude-code)) can do it for you, from your agent's project. Give it this page, and the decisions it cannot make for you:
 
 ```text
-Deploy the Forma agent in this project to Google Cloud Run, following
+Deploy the Forma agent in this project to Google Cloud, following
 https://germolinal.github.io/forma/docs/how-to/cloud-deployment.html
 
-- Project: my-gcp-project, region: us-central1, service: dory
-- Client: telegram
-- Database: the connection string is in the SESSIONS_DB_URL variable
-- Secrets the agent needs: OPENAI_API_KEY (in my .env)
+- Project: create a new one called my-forma-agent-1234, region us-central1
+- Agent name: dory. Client: telegram (the bot token is in my .env)
+- Use Vertex AI for the model
+- No workspaces, no code execution
 
-Ask me before creating anything that costs money, and show me how to check
-that the agent answers once it is deployed.
+Ask me before creating anything that costs money, stop if something fails,
+and show me how to check that the agent answers once it is deployed.
 ```
 
 It is worth telling it, too:
 
-* **Which client**, and what is on the other end (your web app, a WhatsApp number, a Telegram bot). It decides the variables, and step 6.
-* **Where the secrets are** (e.g., your `.env`), and to put them in Secret Manager rather than in the image or in the command line history.
-* **To stop if something fails**, rather than working around it: most failures are a missing variable or permission, which the table above names.
+* **Which client**, and what is on the other end (a Telegram bot, a WhatsApp number, your web app). It decides the secrets, and step 11.
+* **Where the secrets are** (e.g., your `.env`), and to put them in Secret Manager rather than in files or in the command line history.
+* **To stop if something fails**, rather than working around it: most failures are a missing permission or secret, which the table above names.

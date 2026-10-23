@@ -98,6 +98,7 @@ While the **Forma CLI** includes features that are useful for development (e.g.,
 | `ghcr.io/germolinal/forma-multi-tenant` | A multi-tenant server: many agents, read from the database |
 | `ghcr.io/germolinal/forma-manager` | Deploys agents to multi-tenant servers |
 | `ghcr.io/germolinal/forma-cli` | The CLI, for compiling and evaluating agents in CI/CD |
+| `ghcr.io/germolinal/forma-sandbox` | The sandbox where agents' code runs (the `code` tool) |
 
 Everything else is decided in `runtime.yaml`, which production servers read just like `forma serve` does: how clients talk to the agent (`client`), where conversations are kept (`storage`), and where the agent's tools keep workspaces and run code.
 
@@ -198,7 +199,7 @@ Set them as environment variables.
 | `BENCH_DURATION_S`             | `15`                            | Seconds `2-throughput` and `3-realistic` last                      |
 | `BENCH_CONCURRENCY`            | `32`                            | Conversations at once in `2-throughput`                            |
 | `BENCH_REALISTIC_CONCURRENCY`  | `64`                            | Conversations at once in `3-realistic`                             |
-| `BENCH_TELEMETRY`              | `console`                       | Forma's `--telemetry`. `just-otel` is what production uses; it also needs `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| `BENCH_TELEMETRY`              | `console`                       | Forma's `--telemetry`. `otel` is what the production images use; it sends telemetry only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set |
 | `BENCH_FORMA_LOGS`             | `warn`                          | Forma's `FORMA_LOGS`                                               |
 | `BENCH_SESSIONS_DB_URL`        | (a throwaway container)         | A MongoDB of your own. The sessions a run opens are deleted after it, and nothing is seeded |
 | `BENCH_DB_MESSAGES`            | `50000`                         | Messages of other conversations the throwaway database starts with |

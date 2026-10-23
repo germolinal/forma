@@ -30,9 +30,9 @@ Every `forma` command that runs your agent accepts a `-t` (or `--telemetry`) opt
 | ----------- | ------------------------------- | --------------------------------------------------------------- |
 | `console`   | ✅                               | ❌                                                               |
 | `otel`      | ✅                               | ✅                                                               |
-| `just-otel` | ❌                               | ✅                                                               |
+| `just-otel` | Only warnings and errors (production builds); nothing (the CLI) | ✅                                                  |
 
-The CLI (`forma dev`, `forma serve`) defaults to `console`, so nothing is sent anywhere unless you ask for it (e.g., `forma dev -t otel`). Production servers default to `otel`, and the official container images use `just-otel`. (Check the [Deployment](./deployment.md) section.)
+The CLI (`forma dev`, `forma serve`) defaults to `console`, so nothing is sent anywhere unless you ask for it (e.g., `forma dev -t otel`). Production servers, and the official container images, use `otel`: without `OTEL_EXPORTER_OTLP_ENDPOINT`, that only prints. (Check the [Deployment](./deployment.md) section.)
 
 The rest is configured via environment variables.
 

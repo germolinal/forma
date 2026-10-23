@@ -135,12 +135,15 @@ jobs:
       matrix:
         image:
           # A single-tenant server: one agent, read from a file.
-          - { name: forma, file: Dockerfile.channel, features: "" }
+          - { name: forma, context: forma, file: Dockerfile.channel, features: "" }
           # Many agents, read from the database: for platforms.
-          - { name: forma-multi-tenant, file: Dockerfile.channel, features: multi-tenant }
-          - { name: forma-manager, file: Dockerfile.manager, features: "" }
+          - { name: forma-multi-tenant, context: forma, file: Dockerfile.channel, features: multi-tenant }
+          - { name: forma-manager, context: forma, file: Dockerfile.manager, features: "" }
           # The CLI, for pipelines (e.g., `forma eval` in CI).
-          - { name: forma-cli, file: Dockerfile.cli, features: "" }
+          - { name: forma-cli, context: forma, file: Dockerfile.cli, features: "" }
+          # The code-execution sandbox (Python, no Rust): what a Cloud Run Job
+          # runs for the `code` tool. Its context is its own folder.
+          - { name: forma-sandbox, context: forma/sandbox, file: Dockerfile, features: "" }
         platform:
           - { arch: amd64, runner: ubuntu-24.04 }
           - { arch: arm64, runner: ubuntu-24.04-arm }
@@ -159,8 +162,8 @@ jobs:
       - id: build
         uses: docker/build-push-action@v6
         with:
-          context: forma
-          file: forma/${{ matrix.image.file }}
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.context }}/${{ matrix.image.file }}
           platforms: linux/${{ matrix.platform.arch }}
           build-args: ${{ matrix.image.features != '' && format('FEATURES={0}', matrix.image.features) || '' }}
           labels: |
@@ -195,7 +198,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [forma, forma-multi-tenant, forma-manager, forma-cli]
+        image: [forma, forma-multi-tenant, forma-manager, forma-cli, forma-sandbox]
     env:
       # Job-level env cannot read the workflow's (IMAGE_PREFIX).
       IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}

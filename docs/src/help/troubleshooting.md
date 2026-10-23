@@ -90,7 +90,7 @@ The server looks for `agent.yaml` in the directory it runs from. Pass the right 
 
 ### `Input Error: the agent in 'agent.yaml' has no nodes`
 
-The agent file was produced with `forma expand` instead of `forma expand -c`. Production servers need the compiled agent ([details](../how-to/deployment.md#1-compile-your-agent-into-a-single-file)).
+The agent file was produced with `forma expand` instead of `forma expand -c`. Production servers need the compiled agent ([details](../how-to/deployment.md#1-production-servers-need-a-compiled-agent)).
 
 ### `no x-deployment-id found in header`
 

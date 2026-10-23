@@ -16,5 +16,8 @@ See `forma/README.md` to build it, and the
 
 Releases are `v*` tags: a tag publishes the website and the documentation,
 the CLI's binaries (GitHub Releases), and the container images
-(`ghcr.io/germolinal/forma`, `forma-multi-tenant`, `forma-manager` and
-`forma-cli`).
+(`ghcr.io/germolinal/forma`, `forma-multi-tenant`, `forma-manager`,
+`forma-cli` and `forma-sandbox`).
+
+`deployments/gcp/` has Terraform for one agent on Google Cloud, using those
+images.

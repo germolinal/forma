@@ -1,0 +1,37 @@
+# Copy this file to terraform.tfvars (which git ignores) and fill it in.
+
+project = "my-gcp-project"
+region  = "us-central1"
+service = "dory"
+
+# The Forma you develop with (`forma --version`): the server and the sandbox
+# run this version of the published images.
+forma_version = "latest"
+
+# Your compiled agent (`forma expand -c > agent.yaml`) and its runtime file,
+# relative to this folder.
+agent_file   = "../../agent.yaml"
+runtime_file = "../../runtime.yaml"
+
+# false on the first apply; true once the secrets have values.
+deploy = false
+
+# Environment variable = secret name. You add the values with gcloud.
+secrets = {
+  SESSIONS_DB_URL = "sessions-db-url"
+  FORMA_AGENT_KEY = "forma-agent-key" # sync, sse, ai-sdk-v5
+  # TELEGRAM_BOT_TOKEN    = "telegram-bot-token"
+  # TELEGRAM_SECRET_TOKEN = "telegram-secret-token"
+  # OPENAI_API_KEY        = "openai-api-key"
+}
+
+# Google's models (vertex-ai), with no API key.
+vertex_ai = true
+
+# A bucket for workspaces, scrapbooks and knowledge bases.
+workspaces = false
+# Existing buckets your knowledge-base tools read.
+knowledge_buckets = []
+
+# Running code, in a Cloud Run Job without internet. Needs workspaces.
+code_execution = false

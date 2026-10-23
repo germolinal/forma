@@ -69,9 +69,9 @@ TODO:
       variables each runtime needs, the port, what `-t` does. In
       `docs/src/how-to/deployment.md` ("The images"), with the two-step
       `Dockerfile` that `forma init` now creates (2026-10-23).
-- [ ] The server images' default command sends logs only to a collector
-      (`-t just-otel`): a container run without one prints nothing. Consider
-      `-t otel` (collector and console) or `-t console` for the public images.
+- [x] The server images' default command is `-t otel` (console, plus the
+      collector when `OTEL_EXPORTER_OTLP_ENDPOINT` is set), not `-t just-otel`
+      (warnings only on the console) (2026-10-23).
 
 ## 2. CLI binaries
 

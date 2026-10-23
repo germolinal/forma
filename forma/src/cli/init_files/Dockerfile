@@ -33,6 +33,7 @@ COPY --from=compile /work/agent.yaml /app/agent.yaml
 # deploying: with `file`, conversations are lost whenever the container is
 # replaced. To change the runtime without rebuilding, mount another file here.
 COPY runtime.yaml /config/runtime.yaml
-# `-t console` prints logs, which most container services collect. Use
-# `-t otel` to send traces and metrics to an OpenTelemetry collector as well.
-CMD ["/app/forma", "serve", "-t", "console", "-a", "/app/agent.yaml", "-r", "/config/runtime.yaml"]
+# `-t otel` prints logs, which most container services collect, and also sends
+# them, with traces and metrics, to the OpenTelemetry collector at
+# OTEL_EXPORTER_OTLP_ENDPOINT, if there is one.
+CMD ["/app/forma", "serve", "-t", "otel", "-a", "/app/agent.yaml", "-r", "/config/runtime.yaml"]

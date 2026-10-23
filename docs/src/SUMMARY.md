@@ -65,7 +65,7 @@
   - [Forma Agents' API Key](./how-to/forma-agent-api-key.md)  
   - [Authenticating to LLM Providers](./how-to/llm-auth.md)
 - [Deployment](./how-to/deployment.md)
-  - [Deploying to the cloud](./how-to/cloud-deployment.md)
+  - [Deploying to Google Cloud](./how-to/cloud-deployment.md)
   - [HTTP API](./how-to/http-api.md)
   - [Your agent on WhatsApp](./how-to/whatsapp.md)
   - [Your agent on Telegram](./how-to/telegram.md)

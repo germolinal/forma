@@ -27,6 +27,11 @@ env:
   RUST_TOOLCHAIN: "1.99.1"
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  # No debug info in CI builds: it is most of a debug target directory, and
+  # `make test` builds the workspace twice (the CLI's features and
+  # production's). With it, the runner's disk filled up while linking (lld
+  # dies with SIGBUS). Panics still report the file and line.
+  CARGO_PROFILE_DEV_DEBUG: 0
 
 defaults:
   run:
@@ -88,6 +93,15 @@ jobs:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
       PHOENIX_EVAL_ENDPOINT: http://localhost:6006
     steps:
+      # The runner ships SDKs Forma never uses (about 20 GB). Removing them
+      # leaves room for two builds of the workspace, the cache and the
+      # service containers.
+      - name: Free disk space
+        working-directory: /
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
