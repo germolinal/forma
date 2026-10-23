@@ -32,7 +32,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Check out the release
@@ -58,13 +58,13 @@ jobs:
       - uses: peaceiris/actions-mdbook@v2
         with:
           mdbook-version: ${{ env.MDBOOK_VERSION }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: website/.nvmrc
           cache: npm
           cache-dependency-path: website/package-lock.json
       - id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       - name: Build
         env:
           SITE_URL: ${{ steps.pages.outputs.origin }}
@@ -72,7 +72,7 @@ jobs:
         run: |
           (cd website && npm ci)
           website/build.sh
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: website/dist
 
@@ -84,4 +84,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
