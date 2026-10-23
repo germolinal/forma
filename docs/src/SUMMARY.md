@@ -25,6 +25,23 @@
 
 ---
 
+# Designing AI Agents
+
+- [Designing AI agents](./designing-agents/index.md)
+  - [Defining your agent](./designing-agents/defining-your-agent.md)
+  - [User personas](./designing-agents/user-personas.md)
+  - [Structuring responses](./designing-agents/response-structure.md)
+  - [Tone and personality](./designing-agents/tone.md)
+  - [Questions at the end](./designing-agents/closing-questions.md)
+  - [Small talk and scope](./designing-agents/small-talk-and-scope.md)
+  - [Errors, uncertainty and trust](./designing-agents/trust-errors-uncertainty.md)
+  - [Bad actors and security](./designing-agents/security-and-bad-actors.md)
+  - [Evaluating agent behaviour](./designing-agents/evaluating-agent-behaviour.md)
+  - [Checklist and prompt template](./designing-agents/checklist-and-prompt-template.md)
+  - [Lessons from practice](./designing-agents/lessons-from-practice.md)
+
+---
+
 # Hands-on Guides
 
 - [Getting started](./how-to/getting-started.md)
