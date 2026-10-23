@@ -1,11 +1,11 @@
 # Observability and Monitoring
 
 Observability is built into every Forma container image.  
-By default, agents ship with [OpenTelemetry](https://opentelemetry.io/) instrumentation, extended with [OpenInference](https://arize-ai.github.io/openinference) standards.  
+By default, agents ship with [OpenTelemetry](https://opentelemetry.io/) instrumentation, following the [OpenTelemetry GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai): an agent's message is an `invoke_agent` span, a workflow an `invoke_workflow` span, each LLM call a `chat <model>` span and each tool call an `execute_tool <tool>` span, with `gen_ai.*` attributes.
 
 This means:
-- You can send traces, logs, and metrics to **any OTEL-compatible backend** (Grafana, Tempo, Datadog, etc.).
-- You can analyze AI-specific traces with [Phoenix Arize](https://phoenix.arize.com).
+- You can send traces, logs, and metrics to **any OTEL-compatible backend** (Grafana, Tempo, Datadog, etc.), including the clouds' own: Google Cloud Trace, AWS CloudWatch and Azure Application Insights read these conventions.
+- You can analyze AI-specific traces with [Phoenix Arize](https://phoenix.arize.com), which reads them from version 15.10.
 - You can integrate Forma agents into your existing observability stack with no additional coding.
 
 
@@ -57,6 +57,7 @@ Three variables control how much telemetry Forma produces, and how it is sent:
 | `FORMA_LOGS`                     | `info`  | What is *logged*: to the console, and as OpenTelemetry log records               |
 | `FORMA_TRACES`                   | `info`  | Which spans are exported as *traces*. Independent of `FORMA_LOGS`                 |
 | `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` | `64`    | How many spans are sent to the collector in each export (a standard OpenTelemetry variable) |
+| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | off | Whether traces record the conversation: messages, system instructions, and tools' arguments and results (a standard OpenTelemetry variable) |
 
 `FORMA_LOGS` and `FORMA_TRACES` take the same values:
 
@@ -78,6 +79,14 @@ export FORMA_TRACES=info   # every trace (the default)
 # Or: logs, but no traces at all
 export FORMA_TRACES=off
 ```
+
+#### Conversations in traces
+
+The OpenTelemetry GenAI conventions make message content opt-in, and so does Forma: without `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` (or `SPAN_ONLY`), traces carry what happened (the model, the tokens, the tools called, how long each step took, what failed) but not what was said. With it, each LLM span records its conversation once (`gen_ai.input.messages`, `gen_ai.output.messages` and `gen_ai.system_instructions`), and each tool span its arguments and result.
+
+Turning it on is what makes traces useful for debugging an agent, which is why the `.env` of a project created by `forma init` sets it. In production, remember that traces then hold what your users wrote, and that they get larger.
+
+Conversations are recorded in the conventions' compact form: each message is its role and its parts (text, tool calls, tool results). Media is recorded as its kind only (`image`, `audio`, `file`), never its data, and neither are message ids, timestamps or Gemini's thought signatures.
 
 #### Export batch size
 

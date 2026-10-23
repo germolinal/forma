@@ -19,7 +19,7 @@ use serde::Serialize;
 use tracing::{Level, info};
 use tracing_subscriber::{
     EnvFilter,
-    filter::{FilterExt, Targets},
+    filter::{FilterExt, Targets, filter_fn},
     fmt::{self},
     prelude::*,
 };
@@ -33,6 +33,13 @@ use opentelemetry::trace::TracerProvider as _;
 /// What is logged: to the console, and as OpenTelemetry log records.
 fn env_filter() -> EnvFilter {
     EnvFilter::try_from_env("FORMA_LOGS").unwrap_or_else(|_| EnvFilter::new("info"))
+}
+
+/// What the span layer sees besides spans: only warnings and errors, which
+/// mark the span they happen in. Other log lines are exported as logs
+/// already; attaching them to spans as events too sent each of them twice.
+fn spans_and_problems<S>() -> impl tracing_subscriber::layer::Filter<S> + Clone {
+    filter_fn(|meta| meta.is_span() || *meta.level() <= Level::WARN)
 }
 
 /// Which spans are exported as traces. Separate from `FORMA_LOGS`, so that a
@@ -61,6 +68,23 @@ fn crate_filter() -> Targets {
 }
 
 const TRACER_NAME: &str = "FormaTracer";
+
+/// The span layer, without the attributes `tracing-opentelemetry` adds to
+/// every span by default (source file and line, module, thread, busy and
+/// idle time, level and target): noise next to an agent's own attributes, and
+/// repeated on every span.
+fn lean_span_layer<S>()
+-> tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry::trace::noop::NoopTracer>
+where
+    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
+{
+    tracing_opentelemetry::layer()
+        .with_location(false)
+        .with_threads(false)
+        .with_tracked_inactivity(false)
+        .with_level(false)
+        .with_target(false)
+}
 
 /// A flag that indicates whether to send telemetry to the
 /// console, to an Opentelemetry collector, or both
@@ -102,8 +126,7 @@ impl Telemeter {
                 let logger = logger(service_name);
                 let meter = meter(service_name);
 
-                let tracing_layer =
-                    tracing_opentelemetry::layer().with_tracer(tracer.tracer(TRACER_NAME));
+                let tracing_layer = lean_span_layer().with_tracer(tracer.tracer(TRACER_NAME));
                 let logging_layer = OpenTelemetryTracingBridge::new(&logger);
 
                 let ret = Self {
@@ -125,7 +148,13 @@ impl Telemeter {
                             .with_ansi(with_ansi)
                             .with_filter(crate_filter().and(env_filter())),
                     )
-                    .with(tracing_layer.with_filter(crate_filter().and(traces_filter())))
+                    .with(
+                        tracing_layer.with_filter(
+                            crate_filter()
+                                .and(traces_filter())
+                                .and(spans_and_problems()),
+                        ),
+                    )
                     .with(logging_layer.with_filter(crate_filter().and(env_filter())));
 
                 subscriber.init();
@@ -137,8 +166,7 @@ impl Telemeter {
                 let logger = logger(service_name);
                 let meter = meter(service_name);
 
-                let tracing_layer =
-                    tracing_opentelemetry::layer().with_tracer(tracer.tracer(TRACER_NAME));
+                let tracing_layer = lean_span_layer().with_tracer(tracer.tracer(TRACER_NAME));
                 let logging_layer = OpenTelemetryTracingBridge::new(&logger);
 
                 let ret = Self {
@@ -165,12 +193,12 @@ impl Telemeter {
                             .with_ansi(false)
                             .with_filter(LevelFilter::WARN.and(env_filter())),
                     )
-                    .with(tracing_layer.with_filter(traces_filter()))
+                    .with(tracing_layer.with_filter(traces_filter().and(spans_and_problems())))
                     .with(logging_layer.with_filter(env_filter()));
 
                 #[cfg(feature = "cli")]
                 let subscriber = tracing_subscriber::registry()
-                    .with(tracing_layer.with_filter(traces_filter()))
+                    .with(tracing_layer.with_filter(traces_filter().and(spans_and_problems())))
                     .with(logging_layer.with_filter(env_filter()));
 
                 subscriber.init();

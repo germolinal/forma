@@ -37,6 +37,8 @@ Then, follow the same steps you followed in [the first tutorial](./dory.md#3-cha
 
 > **📌 Note**: `-t otel` sends the traces to Phoenix *and* prints the logs to the terminal. Use `-t just-otel` if you want a quiet terminal. Traces are sent to `http://localhost:4317` unless you set the `OTEL_EXPORTER_OTLP_ENDPOINT` variable (check the [Observability](./observability.md) section).
 
+> **📌 Note**: Traces only include the conversation (the messages, and each tool's arguments and result) when `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`, which the `.env` of a project created by `forma init` sets. Forma's traces follow the OpenTelemetry GenAI conventions, which Phoenix reads from version 15.10.
+
 ## 4. Check some *traces*
 
 We will use Phoenix for other things as well, but for now lets focus on Traces. For this, click on the one and only project available. You should see something like this:
@@ -45,7 +47,7 @@ We will use Phoenix for other things as well, but for now lets focus on Traces. 
 
 >❗**Note**: If you do not see any traces, then you need to talk to your agent a bit more, or wait for a minute.
 
-Now click on any of the rows that say 'workflow', and you will see something like the following come up:
+Now click on any of the rows that say `invoke_agent`, and you will see something like the following come up (the names in the picture are older, but the structure is the same: the agent, its workflow, and each LLM call, `chat <model>`, and tool call, `execute_tool <tool>`):
 
 ![dory-trace](./img/dory-trace.png)
 

@@ -180,20 +180,21 @@ impl<DB: FormaDB> Callable<DB> for Workflow {
         ctx: CallContext<DB>,
         is_root: bool,
     ) -> Result<Option<serde_json::Value>, FormaError> {
-        let sstring = {
+        let session_id = {
             let s = ctx.session.read().await;
             s.id_string()
                 .expect("workflow does not have an id")
                 .to_string()
         };
 
+        // An `invoke_workflow` span, in the OpenTelemetry GenAI conventions.
         let span = span!(tracing::Level::INFO,
             Workflow::CLASS,
-            openinference.span.kind = "CHAIN",
-            workflow=%self.id,
-            job_id=%ctx.job_id,
-            input.value = sstring,
-            output.value = tracing::field::Empty
+            otel.name = format!("invoke_workflow {}", self.id),
+            gen_ai.operation.name = "invoke_workflow",
+            gen_ai.workflow.name = %self.id,
+            gen_ai.conversation.id = session_id,
+            job_id = %ctx.job_id,
         );
 
         info!(workflow = %self.id, "running workflow");
@@ -217,10 +218,6 @@ impl<DB: FormaDB> Callable<DB> for Workflow {
             }
         }
         let out = self.collect_output(ctx.session).await?;
-        span.record(
-            "output.value",
-            serde_json::to_string(&out).expect("could not serialize Value?"),
-        );
         info!(workflow = %self.id, "workflow complete");
         Ok(Some(out))
     }
