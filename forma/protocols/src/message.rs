@@ -263,9 +263,7 @@ pub enum FormaMessageBody {
         content: Vec<FormaMessagePart>,
         /// The tool calls proposed by the assistant
         tool_calls: Vec<OpenAIToolChoice>,
-        /// The thought signature of the part. Stored as it is (`null` when
-        /// there is none), but left out of telemetry.
-        #[serde(skip_serializing_if = "genai_client::telemetry::omitted")]
+        /// The thought signature of the part.
         thought_signature: Option<bytes::Bytes>,
         /// The bundle of each tool call that has one, by tool call ID. Only
         /// there so a reopened session renders its tool calls as the live
@@ -788,6 +786,76 @@ where
     }
 }
 
+/// A message part as the OpenTelemetry GenAI conventions record it: text as
+/// it is, media by its kind only (never its data).
+fn telemetry_part(part: &FormaMessagePart) -> serde_json::Value {
+    use genai_client::telemetry::{media_part, text_part};
+    match part {
+        FormaMessagePart::Text(t) => text_part(&t.text),
+        FormaMessagePart::ImageUrl(_) => media_part("image"),
+        FormaMessagePart::InputAudio(_) => media_part("audio"),
+        FormaMessagePart::File(_) | FormaMessagePart::WorkspaceFile(_) => media_part("file"),
+    }
+}
+
+/// The text of a message's parts, for a tool's response.
+fn telemetry_text(parts: &[FormaMessagePart]) -> String {
+    parts
+        .iter()
+        .filter_map(|p| match p {
+            FormaMessagePart::Text(t) => Some(t.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// What an LLM span records of the conversation it was given, in the
+/// OpenTelemetry GenAI conventions' shape: `gen_ai.system_instructions` (the
+/// system and developer messages, if any) and `gen_ai.input.messages` (the
+/// rest). Each message is its role and its parts, nothing else: no ids,
+/// timestamps or thought signatures.
+pub fn telemetry_input(messages: &[FormaMessage]) -> (Option<String>, String) {
+    use genai_client::telemetry::{
+        assistant_parts, message, system_instructions, tool_call_response_part,
+    };
+    let mut system = vec![];
+    let mut input = vec![];
+    for m in messages {
+        match &m.content {
+            FormaMessageBody::System { content } | FormaMessageBody::Developer { content } => {
+                system.push(telemetry_text(content));
+            }
+            FormaMessageBody::User { content } => {
+                input.push(message(
+                    "user",
+                    content.iter().map(telemetry_part).collect(),
+                ));
+            }
+            FormaMessageBody::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => input.push(message(
+                "assistant",
+                assistant_parts(content.iter().map(telemetry_part), tool_calls),
+            )),
+            FormaMessageBody::Tool {
+                tool_call_id,
+                content,
+            } => input.push(message(
+                "tool",
+                vec![tool_call_response_part(
+                    tool_call_id,
+                    &telemetry_text(content),
+                )],
+            )),
+        }
+    }
+    let system = (!system.is_empty()).then(|| system_instructions(&system.join("\n\n")));
+    (system, serde_json::Value::Array(input).to_string())
+}
+
 #[cfg(test)]
 mod testing {
     use super::*;
@@ -1045,26 +1113,48 @@ mod testing {
     }
 
     #[test]
-    fn thought_signatures_are_stored_but_left_out_of_telemetry() {
-        let body: FormaMessageBody = serde_json::from_value(serde_json::json!({
-            "role": "assistant", "content": [], "tool_calls": [], "thought_signature": [1, 2, 3]
-        }))
-        .unwrap();
-        // What the database stores keeps it.
-        let stored = serde_json::to_value(&body).unwrap();
-        assert_eq!(stored["thought_signature"], serde_json::json!([1, 2, 3]));
-        // A span or a log does not.
-        let traced: serde_json::Value =
-            serde_json::from_str(&genai_client::telemetry::to_json(&body)).unwrap();
-        assert_eq!(traced["role"], "assistant");
-        assert!(traced.get("thought_signature").is_none());
-
-        // Without one, it is still stored as null, as before.
-        let none: FormaMessageBody = serde_json::from_value(serde_json::json!({
-            "role": "assistant", "content": [], "tool_calls": [], "thought_signature": null
-        }))
-        .unwrap();
-        let stored = serde_json::to_value(&none).unwrap();
-        assert!(stored.get("thought_signature").is_some_and(|v| v.is_null()));
+    fn a_conversation_takes_the_genai_conventions_shape() {
+        let msg = |body: serde_json::Value| -> FormaMessage {
+            FormaMessage {
+                content: serde_json::from_value(body).unwrap(),
+                ..Default::default()
+            }
+        };
+        let messages = vec![
+            msg(
+                serde_json::json!({"role": "system", "content": [{"type": "text", "text": "Be brief"}]}),
+            ),
+            msg(serde_json::json!({"role": "user", "content": [
+                {"type": "text", "text": "Weather in Paris?"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}
+            ]})),
+            msg(serde_json::json!({"role": "assistant", "content": [],
+                "tool_calls": [{"type": "function", "id": "c1",
+                    "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}}],
+                "thought_signature": [1, 2, 3]})),
+            msg(serde_json::json!({"role": "tool", "tool_call_id": "c1",
+                "content": [{"type": "text", "text": "rainy"}]})),
+        ];
+        let (system, input) = telemetry_input(&messages);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&system.unwrap()).unwrap(),
+            serde_json::json!([{"type": "text", "content": "Be brief"}])
+        );
+        let input: serde_json::Value = serde_json::from_str(&input).unwrap();
+        assert_eq!(
+            input,
+            serde_json::json!([
+                {"role": "user", "parts": [
+                    {"type": "text", "content": "Weather in Paris?"},
+                    {"type": "image"}
+                ]},
+                {"role": "assistant", "parts": [
+                    {"type": "tool_call", "id": "c1", "name": "get_weather", "arguments": {"city": "Paris"}}
+                ]},
+                {"role": "tool", "parts": [
+                    {"type": "tool_call_response", "id": "c1", "response": "rainy"}
+                ]}
+            ])
+        );
     }
 }

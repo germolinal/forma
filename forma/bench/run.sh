@@ -107,9 +107,11 @@ otel | just-otel)
 		echo "==> starting a throwaway OpenTelemetry Collector on port $OTEL_PORT"
 		OTEL_CONTAINER=forma-bench-otel
 		docker rm -f "$OTEL_CONTAINER" >/dev/null 2>&1 || true
-		# The image's default configuration receives OTLP and drops it
-		# (debug exporter, basic verbosity).
-		docker run -d --rm --name "$OTEL_CONTAINER" -p "$OTEL_PORT:4317" "$OTEL_IMAGE" >/dev/null
+		# bench/otel-collector.yaml receives OTLP and drops it, counting what
+		# arrived. (The image's own configuration prints every span in full,
+		# which makes the collector the bottleneck.)
+		docker run -d --rm --name "$OTEL_CONTAINER" -p "$OTEL_PORT:4317" \
+			-v "$PWD/bench/otel-collector.yaml:/etc/otelcol/config.yaml:ro" "$OTEL_IMAGE" >/dev/null
 		export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:$OTEL_PORT"
 		sleep 3
 	fi

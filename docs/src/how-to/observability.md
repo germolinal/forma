@@ -1,11 +1,11 @@
 # Observability and Monitoring
 
 Observability is built into every Forma container image.  
-By default, agents ship with [OpenTelemetry](https://opentelemetry.io/) instrumentation, extended with [OpenInference](https://arize-ai.github.io/openinference) standards.  
+By default, agents ship with [OpenTelemetry](https://opentelemetry.io/) instrumentation, following the [OpenTelemetry GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai): an agent's message is an `invoke_agent` span, a workflow an `invoke_workflow` span, each LLM call a `chat <model>` span and each tool call an `execute_tool <tool>` span, with `gen_ai.*` attributes.
 
 This means:
-- You can send traces, logs, and metrics to **any OTEL-compatible backend** (Grafana, Tempo, Datadog, etc.).
-- You can analyze AI-specific traces with [Phoenix Arize](https://phoenix.arize.com).
+- You can send traces, logs, and metrics to **any OTEL-compatible backend** (Grafana, Tempo, Datadog, etc.), including the clouds' own: Google Cloud Trace, AWS CloudWatch and Azure Application Insights read these conventions.
+- You can analyze AI-specific traces with [Phoenix Arize](https://phoenix.arize.com), which reads them from version 15.10.
 - You can integrate Forma agents into your existing observability stack with no additional coding.
 
 
@@ -48,27 +48,58 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
 export OTEL_EXPORTER_OTLP_METRICS_ENDPOINT="http://localhost:4317/v1/metrics"
 ```
 
-## Log Levels
+### Logs, traces and export batches
 
-Control the verbosity of Forma logs with FORMA_LOGS variables:
+Three variables control how much telemetry Forma produces, and how it is sent:
 
+| Variable                         | Default | What it controls                                                                 |
+| -------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| `FORMA_LOGS`                     | `info`  | What is *logged*: to the console, and as OpenTelemetry log records               |
+| `FORMA_TRACES`                   | `info`  | Which spans are exported as *traces*. Independent of `FORMA_LOGS`                 |
+| `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` | `64`    | How many spans are sent to the collector in each export (a standard OpenTelemetry variable) |
+| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | off | Whether traces record the conversation: messages, system instructions, and tools' arguments and results (a standard OpenTelemetry variable) |
 
-```sh
-export FORMA_LOGS=info # or debug | trace | warn | error | info (default)
-```
+`FORMA_LOGS` and `FORMA_TRACES` take the same values:
 
 * `trace` – Most detailed, includes every span and step.
 * `debug` – Useful for development; shows workflow decisions and tool calls.
 * `info` – Production-friendly; high-level events and errors only.
-* `warn` - logs warnings and errors
-* `error` - logs only errors
+* `warn` – Warnings and errors.
+* `error` – Errors only.
+* `off` – Nothing.
 
-`FORMA_LOGS` decides what is *logged*, not what is *traced*. Which spans are exported as traces is set by `FORMA_TRACES`, with the same values (default: `info`). So a production server can keep a quiet log and still send every trace:
+They also accept per-module directives, as in [`EnvFilter`](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html) (e.g., `info,agent=debug`).
+
+Because the two are separate, a production server can keep a quiet log and still send every trace, or the other way around:
 
 ```sh
 export FORMA_LOGS=warn     # few log lines
 export FORMA_TRACES=info   # every trace (the default)
+
+# Or: logs, but no traces at all
+export FORMA_TRACES=off
 ```
+
+#### Conversations in traces
+
+The OpenTelemetry GenAI conventions make message content opt-in, and so does Forma: without `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` (or `SPAN_ONLY`), traces carry what happened (the model, the tokens, the tools called, how long each step took, what failed) but not what was said. With it, each LLM span records its conversation once (`gen_ai.input.messages`, `gen_ai.output.messages` and `gen_ai.system_instructions`), and each tool span its arguments and result.
+
+Turning it on is what makes traces useful for debugging an agent, which is why the `.env` of a project created by `forma init` sets it. In production, remember that traces then hold what your users wrote, and that they get larger.
+
+Conversations are recorded in the conventions' compact form: each message is its role and its parts (text, tool calls, tool results). Media is recorded as its kind only (`image`, `audio`, `file`), never its data, and neither are message ids, timestamps or Gemini's thought signatures.
+
+#### Export batch size
+
+Forma sends traces in batches. `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` is not Forma's own setting: it is one of the [standard OpenTelemetry SDK variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#batch-span-processor), which the SDK reads (along with `OTEL_BSP_MAX_QUEUE_SIZE`, `OTEL_BSP_SCHEDULE_DELAY` and `OTEL_BSP_EXPORT_TIMEOUT`). What is Forma's is the default: **64 spans** instead of the SDK's 512.
+
+The reason is the size of an agent's spans. An LLM span carries the conversation it was given, often tens of KB, and 512 of them can exceed a collector's gRPC message limit (4 MiB by default, in the OpenTelemetry Collector and in most vendors). A collector refuses such a batch whole: every span in it is lost, and the spans waiting to be sent pile up in memory (up to 2,048 by default). Smaller batches stay under the limit.
+
+Change it only if you need to:
+
+* **Lower** (e.g., `16`) if your conversations are very long, or your collector's limit is smaller, and you still see exports refused.
+* **Higher** if your collector accepts larger messages (e.g., `max_recv_msg_size_mib` in the OpenTelemetry Collector's OTLP receiver) and you want fewer, larger exports.
+
+A refused export shows up in Forma's logs as a warning from `opentelemetry-otlp`, often with the gRPC code `ResourceExhausted`.
 
 ### Quick Start with Phoenix
 

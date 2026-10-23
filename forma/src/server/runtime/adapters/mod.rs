@@ -751,14 +751,18 @@ pub(crate) async fn prepare_agent_call<DB: FormaDB, I: Into<FormaMessage> + Seri
     // Assign an id to this run
     let job_id = Uuid::new_v4().to_string();
     let deployment_id = args.deployment_id.as_deref().unwrap_or("<none>");
+    // An `invoke_agent` span, in the OpenTelemetry GenAI conventions. The
+    // message itself is content: recorded only when opted into.
     let root_span = tracing::info_span!(
         "FormaJob",
+        otel.name = format!("invoke_agent {}", args.agent_id),
+        gen_ai.operation.name = "invoke_agent",
+        gen_ai.agent.id = %args.agent_id,
+        gen_ai.conversation.id = %args.session_id,
+        user.id = %args.user_id,
         job_id = %job_id,
-        session_id = %args.session_id,
         deployment_id = %deployment_id,
-        agent_id = %args.agent_id,
-        user_id = %args.user_id,
-        input=serde_json::to_string(&message).unwrap(),
+        gen_ai.input.messages = tracing::field::Empty,
     );
 
     let message = match message {
@@ -768,6 +772,11 @@ pub(crate) async fn prepare_agent_call<DB: FormaDB, I: Into<FormaMessage> + Seri
             // what a provider is sent happens later, once every part has been
             // resolved.
             let message: FormaMessage = message.into();
+            if genai_client::telemetry::capture_content() {
+                let (_, input) =
+                    protocols::message::telemetry_input(std::slice::from_ref(&message));
+                root_span.record("gen_ai.input.messages", input);
+            }
             Some(message)
         }
     };
@@ -1088,18 +1097,19 @@ async fn call_agent<DB: FormaDB>(
     let agent = &args.agent;
 
     let start = Utc::now();
+    // A send fails only when the client has gone (the stream's receiver was
+    // dropped): there is nobody left to tell, so it is not an error.
     match agent.run(ctx, true).await {
         Ok(_) => {
             let end = Utc::now();
             let duration = (end - start).as_seconds_f32();
             info!(target: "agent","done running job {} in {:.1} seconds", job_id, duration);
-            tx.send(SSEvent::Finish).unwrap();
+            let _ = tx.send(SSEvent::Finish);
         }
         Err(e) => {
-            tx.send(SSEvent::Error {
+            let _ = tx.send(SSEvent::Error {
                 error: e.to_string(),
-            })
-            .unwrap();
+            });
             error!("{}: {}", job_id, e);
         }
     }

@@ -1,7 +1,7 @@
 #![warn(clippy::dbg_macro)]
 
-pub mod telemetry;
 pub mod events;
+pub mod telemetry;
 pub mod vertex_ai;
 use async_trait::async_trait;
 use derive::FormaDocs;
@@ -172,8 +172,8 @@ pub struct AssistantMessage {
     /// The tool proposed made by the assistant
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<OpenAIToolChoice>,
-    /// The thought signature of the part. Left out of telemetry.
-    #[serde(default, skip_serializing_if = "crate::telemetry::none_or_omitted")]
+    /// The thought signature of the part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thought_signature: Option<bytes::Bytes>,
 }
 

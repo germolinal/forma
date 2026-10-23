@@ -46,61 +46,40 @@ fn flatten_tool_choice(
     Ok(v)
 }
 
+/// An LLM call's span, following the OpenTelemetry GenAI conventions for
+/// inference: named `chat {model}` (through `otel.name`) once
+/// [`Node::init_span`] knows the model. `$name` (`triage`, `summarize`) is
+/// Forma's step, kept as `forma.step`.
 macro_rules! llm_span {
     ($name:expr) => {{
         tracing::span!(
             tracing::Level::INFO,
             $name,
-            input.value = tracing::field::Empty,
-            output.value = tracing::field::Empty,
+            otel.name = tracing::field::Empty,
+            forma.step = $name,
             node_id = tracing::field::Empty,
             user.id = tracing::field::Empty,
-            openinference.span.kind = tracing::field::Empty,
             gen_ai.operation.name = tracing::field::Empty,
-            graph.node.id = tracing::field::Empty,
             gen_ai.provider.name = tracing::field::Empty,
-            llm.system = tracing::field::Empty,
-            llm.provider = tracing::field::Empty,
-            // error.type
-            // gen_ai.agent.description
             gen_ai.agent.id = tracing::field::Empty,
-            // gen_ai.agent.name
             gen_ai.conversation.id = tracing::field::Empty,
-            session.id = tracing::field::Empty,
-            // gen_ai.data_source.id
-            // gen_ai.output_type
-            // gen_ai.request.choice.count
             gen_ai.request.model = tracing::field::Empty,
-            llm.model_name = tracing::field::Empty,
-            // gen_ai.request.seed
-            // server.port
             gen_ai.request.frequency_penalty = tracing::field::Empty,
-            llm.invocation_parameters.frequency_penalty = tracing::field::Empty,
             gen_ai.request.max_tokens = tracing::field::Empty,
-            llm.invocation_parameters.max_tokens = tracing::field::Empty,
             gen_ai.request.presence_penalty = tracing::field::Empty,
-            llm.invocation_parameters.presence_penalty = tracing::field::Empty,
-            // gen_ai.requests.stop_sequences
             gen_ai.request.temperature = tracing::field::Empty,
-            llm.invocation_parameters.temperature = tracing::field::Empty,
             gen_ai.request.top_p = tracing::field::Empty,
-            llm.invocation_parameters.top_p = tracing::field::Empty,
             gen_ai.response.finish_reasons = tracing::field::Empty,
             gen_ai.response.id = tracing::field::Empty,
             gen_ai.response.model = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
-            llm.token_count.prompt = tracing::field::Empty,
-            llm.token_count.total = tracing::field::Empty,
             gen_ai.usage.output_tokens = tracing::field::Empty,
-            llm.token_count.completion = tracing::field::Empty,
             server.address = tracing::field::Empty,
+            // Content: recorded only when it is opted into
+            // (`genai_client::telemetry::capture_content`).
             gen_ai.input.messages = tracing::field::Empty,
-            llm.input.messages = tracing::field::Empty,
             gen_ai.output.messages = tracing::field::Empty,
-            llm.output.messages = tracing::field::Empty,
             gen_ai.system_instructions = tracing::field::Empty,
-            llm.prompt_template.template = tracing::field::Empty,
-            llm.prompt_template.variables = tracing::field::Empty,
         )
     }};
 }
@@ -520,21 +499,26 @@ impl Node {
             return Ok(Some(output));
         }
         let (session_id, agent_id, user_id) = session_data(&ctx).await;
-        let args = serde_json::to_string(&arguments).expect("should not fail");
+        // An `execute_tool` span, in the OpenTelemetry GenAI conventions. The
+        // arguments and the result are content: recorded only when opted into.
+        let capture = genai_client::telemetry::capture_content();
         let span = tracing::span!(
             tracing::Level::INFO,
             "call_tool",
-            openinference.span.kind = "TOOL",
-            user.id = user_id,
-            gen_ai.conversation.id = &session_id,
-            session.id = &session_id,
-            tool_call.function.arguments = &args,
-            tool_call.function.name = &tool_name,
-            tool_call.id = tool_call_id,
+            otel.name = format!("execute_tool {tool_name}"),
+            gen_ai.operation.name = "execute_tool",
+            gen_ai.tool.name = &tool_name,
+            gen_ai.tool.call.id = &tool_call_id,
             gen_ai.agent.id = agent_id,
-            output.value = tracing::field::Empty,
-            input.value = &args
+            gen_ai.conversation.id = &session_id,
+            user.id = user_id,
+            error.type = tracing::field::Empty,
+            gen_ai.tool.call.arguments = tracing::field::Empty,
+            gen_ai.tool.call.result = tracing::field::Empty,
         );
+        if capture {
+            span.record("gen_ai.tool.call.arguments", arguments.to_string());
+        }
 
         // Run the tool. A tool *execution* failure is reported back to the model
         // as a tool result (so it can recover or explain to the user) instead of
@@ -548,8 +532,14 @@ impl Node {
         {
             // output == None means the tool is pending
             Ok(None) => return Ok(None),
-            Ok(Some(output)) => output,
+            Ok(Some(output)) => {
+                if capture {
+                    span.record("gen_ai.tool.call.result", output.to_string());
+                }
+                output
+            }
             Err(err) => {
+                span.record("error.type", "tool_error");
                 warn!(
                     tool = %tool_name,
                     error = %err,
@@ -561,11 +551,6 @@ impl Node {
 
         // Push tool result into the in-memory session so summarisation sees it
         push_in_memory_tool_result(&tool_call_id, &output, &ctx).await?;
-
-        span.record(
-            "output.value",
-            serde_json::to_string(&output).expect("failed to serialize value"),
-        );
 
         // Inform step and persist
         tool.register_result(&ctx, &tool_call_id, &output, is_root)
@@ -583,30 +568,31 @@ impl Node {
             return;
         }
         span.record("gen_ai.usage.input_tokens", response.usage.prompt_tokens);
-        span.record("llm.token_count.prompt", response.usage.prompt_tokens);
         span.record(
             "gen_ai.usage.output_tokens",
             response.usage.completion_tokens,
         );
-        span.record(
-            "llm.token_count.completion",
-            response.usage.completion_tokens,
-        );
-        span.record("llm.token_count.total", response.usage.total_tokens);
         span.record("gen_ai.response.model", &response.model);
         span.record("gen_ai.response.id", &response.id);
-        if !response.choices.is_empty() {
+        let finish_reason = response.choices.first().and_then(|c| {
+            serde_json::to_value(&c.finish_reason)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+        });
+        if let Some(reason) = &finish_reason {
+            // A string[] in the conventions; tracing records it as JSON.
             span.record(
-                // This is supposed to be a string[], but Tracing does not allow it?
                 "gen_ai.response.finish_reasons",
-                serde_json::to_string(&response.choices[0].finish_reason).unwrap(),
+                serde_json::json!([reason]).to_string(),
             );
         }
-        if let Some(outmsg) = response.message() {
-            let v = genai_client::telemetry::to_json(outmsg);
-            span.record("gen_ai.output.messages", &v);
-            span.record("llm.output.messages", &v);
-            span.record("output.value", &v);
+        if genai_client::telemetry::capture_content()
+            && let Some(genai_client::LLMMessage::Assistant(outmsg)) = response.message()
+        {
+            span.record(
+                "gen_ai.output.messages",
+                genai_client::telemetry::output_messages(outmsg, finish_reason.as_deref()),
+            );
         }
     }
 
@@ -649,13 +635,13 @@ impl Node {
     /// Completes a span, populating the values of everything that can only be known
     /// after generating an answer (e.g., token usage)
     fn complete_cached_span(&self, span: &Span, message: &AssistantMessage) {
-        if span.is_disabled() {
+        if span.is_disabled() || !genai_client::telemetry::capture_content() {
             return;
         }
-        let v = genai_client::telemetry::to_json(message);
-        span.record("gen_ai.output.messages", &v);
-        span.record("llm.output.messages", &v);
-        span.record("output.value", &v);
+        span.record(
+            "gen_ai.output.messages",
+            genai_client::telemetry::output_messages(message, None),
+        );
     }
 
     /// Populates span values, adding everything that can be known
@@ -667,76 +653,39 @@ impl Node {
         session: &Session,
         messages: &[FormaMessage],
     ) {
-        // Everything below serialises the whole conversation, which is wasted
-        // when nothing records the span.
         if span.is_disabled() {
             return;
         }
-        let (session_id, agent_id, user_id, variables) = {
+        let (session_id, agent_id, user_id) = {
             let a = session.read().await;
             let session_id = a.id_string().expect("session has no id");
-            let variables = serde_json::to_string(&a.variables).unwrap();
-            (session_id, a.agent_id.clone(), a.user_id.clone(), variables)
+            (session_id, a.agent_id.clone(), a.user_id.clone())
         };
 
-        // if let Some(input) = messages.last() {
-        //     let m = serde_json::to_string(input).expect("could not serialise input message?");
-        //     span.record("input.value", m);
-        // }
-        span.record("node_id", &self.id);
-        span.record("user.id", user_id);
-        span.record("openinference.span.kind", "LLM");
+        span.record("otel.name", format!("chat {}", llm.model()));
         span.record("gen_ai.operation.name", "chat");
-        span.record("graph.node.id", &self.id);
         span.record("gen_ai.provider.name", llm.otel_provider());
-        span.record("llm.provider", llm.openinference_provider());
-        span.record("llm.system", llm.openinference_system());
-        // error.type
-        // gen_ai.agent.description
-        span.record("gen_ai.agent.id", agent_id);
-        // gen_ai.agent.name
-        span.record("gen_ai.conversation.id", &session_id);
-        span.record("session.id", &session_id);
-        // gen_ai.data_source.id
-        // gen_ai.output_type
-        // gen_ai.request.choice.count
         span.record("gen_ai.request.model", llm.model());
-        span.record("llm.model_name", llm.model());
-        // gen_ai.request.seed
-        // server.port
+        span.record("gen_ai.conversation.id", &session_id);
+        span.record("gen_ai.agent.id", agent_id);
+        span.record("user.id", user_id);
+        span.record("node_id", &self.id);
         span.record("gen_ai.request.frequency_penalty", llm.frequency_penalty());
-        span.record(
-            "llm.invocation_parameters.frequency_penalty",
-            llm.frequency_penalty(),
-        );
         span.record("gen_ai.request.max_tokens", llm.max_tokens());
-        span.record("llm.invocation_parameters.max_tokens", llm.max_tokens());
         span.record("gen_ai.request.presence_penalty", llm.presence_penalty());
-        span.record(
-            "llm.invocation_parameters.presence_penalty",
-            llm.presence_penalty(),
-        );
-        // gen_ai.requests.stop_sequences
         span.record("gen_ai.request.temperature", llm.temperature());
-        span.record("llm.invocation_parameters.temperature", llm.temperature());
         span.record("gen_ai.request.top_p", llm.top_p());
-        span.record("llm.invocation_parameters.top_p", llm.top_p());
-        // span.record("gen_ai.response.finish_reasons", tracing::field::Empty);
-        // span.record("gen_ai.response.id", tracing::field::Empty);
-        // span.record("gen_ai.response.model", tracing::field::Empty);
-        // span.record("gen_ai.usage.input_tokens", tracing::field::Empty); //--> DONE AFTER
-        // span.record("llm.token_count.prompt", tracing::field::Empty);
-        // span.record("llm.token_count.total", tracing::field::Empty);
-        // span.record("gen_ai.usage.output_tokens", tracing::field::Empty);
-        // span.record("llm.token_count.completion", tracing::field::Empty);
         span.record("server.address", llm.chat_endpoint().unwrap());
-        let input = genai_client::telemetry::to_json(&messages);
-        span.record("gen_ai.input.messages", &input);
-        span.record("llm.input.messages", &input);
-        // gen_ai.output.messages
-        span.record("gen_ai.system_instructions", messages[0].to_string());
-        span.record("llm.prompt_template.template", &self.system_prompt);
-        span.record("llm.prompt_template.variables", variables);
+
+        // The conversation, once, and only when content is opted into: it is
+        // what makes a span large.
+        if genai_client::telemetry::capture_content() {
+            let (system, input) = protocols::message::telemetry_input(messages);
+            if let Some(system) = system {
+                span.record("gen_ai.system_instructions", system);
+            }
+            span.record("gen_ai.input.messages", input);
+        }
     }
 
     /// Borrows the ID of the node.
@@ -1710,7 +1659,7 @@ impl<DB: FormaDB> Callable<DB> for Node {
         is_root: bool,
     ) -> Result<Option<serde_json::Value>, FormaError> {
         // Report start step
-        let span = span!(tracing::Level::INFO, "node", node=%self.id, job_id=%ctx.job_id, openinference.span.kind = "AGENT");
+        let span = span!(tracing::Level::INFO, "node", node=%self.id, job_id=%ctx.job_id);
 
         async move {
             let mut any_tools_called = false;
