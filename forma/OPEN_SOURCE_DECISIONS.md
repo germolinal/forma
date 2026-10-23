@@ -2,8 +2,8 @@
 
 Started 2026-10-22, while setting up CI, the website and the logo for Forma's
 own repository (see `OPEN_SOURCE.md`), and while moving the runtime's choices
-from Cargo features into `runtime.yaml`. Licences, binaries and Docker images
-are left for their own discussions.
+from Cargo features into `runtime.yaml`. What is still to do is in
+`OPEN_SOURCE.md`.
 
 ## Decided
 
@@ -14,8 +14,8 @@ are left for their own discussions.
 
   ```
   <repo root>/
-    .github/            workflows/ (ci, docs, pages, dependencies), dependabot.yml
-    README.md
+    .github/            workflows/ (ci, docs, pages, release, dependencies), dependabot.yml
+    README.md, LICENSE, TRADEMARKS.md
     forma/              as it is today (the Cargo workspace)
     docs/         the mdBook
     website/         the website (Astro, Tailwind)
@@ -23,8 +23,16 @@ are left for their own discussions.
 
   `forma/` stays a subdirectory: `make docs` writes to `../docs/src`, and
   the three directories keep the paths they have today.
+- **Licence (2026-10-23): MIT**, "Copyright (c) 2025-2026 German Molina", in
+  `LICENSE` at the root. The release copies it into the CLI's archives, the
+  images carry `org.opencontainers.image.licenses`, and every crate says
+  `license = "MIT"`. Considered: AGPL-3.0, Apache-2.0, source-available
+  (FSL, BSL). Abuse is handled through the name, not the licence:
+  `TRADEMARKS.md` (forks rename; the name never on anything harmful), as Deno
+  and Node.js do. Contributions come in under MIT; no CLA.
 - **Releases are `v*` tags.** A tag publishes the website and the docs, both
-  from the tag (`pages.yml`); binaries and images will follow the same tag.
+  from the tag (`pages.yml`), and the binaries and images (`release.yml`; see
+  "Releases", below).
 - **Website**: static Astro with Tailwind 4, the same stack as Clonsult's
   `website/`. shadcn's token names and button recipe, no shadcn library (the
   page needs no interactive component yet).
@@ -166,33 +174,13 @@ To know before applying:
 
 ## Extraction
 
-The root files live in `forma-repo-root/` in Clonsult's repository, where
-GitHub ignores them (workflows only run from the root's `.github/`, and
-Clonsult's repository must not run them). On extraction:
+Done: the repository was extracted from Clonsult's with `git filter-repo`
+(`forma/`, `docs/`, `website/`, and `forma-repo-root/` renamed to the root),
+its history scanned for secrets, and made public.
 
-```sh
-git filter-repo --path forma/ --path docs/ --path website/ \
-  --path forma-repo-root/ --path-rename forma-repo-root/:
-```
-
-Scan the history for secrets first (`OPEN_SOURCE.md`, "Before publishing").
-
-## While the repository is private
-
-- **GitHub Pages needs a paid plan for a private repository** (Pro, Team or
-  Enterprise; Free publishes Pages from public repositories only). Either
-  GitHub Pro, or no website until the repository is public: `pages.yml` then
-  fails at `configure-pages`, nothing else breaks.
-- **Actions minutes**: private repositories get 2,000 minutes a month on
-  Free (3,000 on Pro); public ones are free. A pull request that touches
-  `forma/` runs four Rust jobs (fmt, clippy, tests, builds); the 20-job
-  feature matrix is gone with the features.
-- **Dependabot** is free for private repositories too: alerts, security
-  updates and version updates. In a private repository, turn on alerts and
-  security updates in Settings → Code security. Version updates
-  (`dependabot.yml`) work as soon as the file is there. Its pull requests run
-  the workflows like any other, so they spend minutes too: grouped weekly
-  updates keep that to a few pull requests a week.
+- **Dependabot**: version updates come from `dependabot.yml`; alerts and
+  security updates are turned on in Settings → Code security. Grouped weekly
+  updates keep its pull requests to a few a week.
 
 ## CI (`.github/workflows/`)
 
@@ -210,10 +198,9 @@ Scan the history for secrets first (`OPEN_SOURCE.md`, "Before publishing").
   ship inside MIT-licensed Forma.
   Duplicate crate versions warn, they don't fail. CC0-1.0 is allowed too
   (`notify`, `tiny-keccak`).
-- Every crate in the workspace has `publish = false`: none is on crates.io,
-  and cargo deny then skips their (missing) `license` field and their path
-  dependencies. Publishing a crate later means removing it, and giving that
-  crate a `license`.
+- Every crate in the workspace has `publish = false` and `license = "MIT"`:
+  none is on crates.io, so cargo deny skips them and their path dependencies.
+  Publishing a crate later means removing `publish = false`.
 - `cargo audit` passes since 2026-10-22, when `Cargo.lock` was updated to fix
   10 advisories (`rustls`, `rustls-webpki`, `webpki-roots`,
   `webpki-root-certs`, `quinn-proto`). Two "unmaintained" warnings remain
@@ -241,17 +228,8 @@ Scan the history for secrets first (`OPEN_SOURCE.md`, "Before publishing").
   (and a `website/public/CNAME`).
 - Fonts are self-hosted (`@fontsource-variable`): Inter, Space Grotesk,
   JetBrains Mono. No third-party requests.
-- The "Try it" section installs from source (`cargo install`), until binaries
-  exist.
+- The "Get started" section installs from the latest release.
 - `docs/src/intro.md` embeds a YouTube video that shows the old logo.
-- `forma/README.md` links `github.com/ai-forma/forma-examples`, which won't
-  exist under `germolinal`. Move the examples into this repository, or drop
-  the link.
-- **Licence (decided 2026-10-23): MIT**, "Copyright (c) 2025-2026 German
-  Molina", in `LICENSE` at the repository root (the release copies it into
-  the CLI's archives; the images carry `org.opencontainers.image.licenses`).
-  Every crate says `license = "MIT"`. Abuse is handled through the name,
-  not the licence: `TRADEMARKS.md`, as Deno and Node.js do.
 
 ## Logo
 
@@ -267,25 +245,23 @@ Scan the history for secrets first (`OPEN_SOURCE.md`, "Before publishing").
   settled.
 - Colours: ink `#141922`, paper `#F4F1EA`, amber `#F2A93B`.
 
-## Releases (`.github/workflows/release.yml`, written 2026-10-22, not run yet)
+## Releases (`.github/workflows/release.yml`, written 2026-10-22, first run v0.2.1)
 
 - A `v*` tag publishes the CLI's binaries to a GitHub Release
   (`forma-<target>.tar.gz`, no version in the name so
-  `releases/latest/download/...` is stable, plus `SHA256SUMS`), and four
-  multi-arch images to GHCR: `forma`, `forma-multi-tenant`, `forma-manager`,
-  `forma-cli`, tagged `X.Y.Z`, `X.Y` and `latest` (not for prereleases), with
-  SBOM and provenance.
-- The tag must equal `version` in `forma/Cargo.toml` (now `0.2.0`): bump it in
-  the release commit.
+  `releases/latest/download/...` is stable, plus `SHA256SUMS`), and five
+  multi-arch images to GHCR (`ghcr.io/germolinal/`): `forma`,
+  `forma-multi-tenant`, `forma-manager`, `forma-cli`, `forma-sandbox`, tagged
+  `X.Y.Z`, `X.Y` and `latest` (not for prereleases), with SBOM and provenance.
+- The tag must equal `version` in `forma/Cargo.toml` (now `0.2.1`), which is
+  what `forma --version` reports: bump it in the release commit.
 - Targets: Linux x86_64/aarch64 (built on Ubuntu 22.04, glibc ≥ 2.35), macOS
   aarch64/x86_64. Native runners only (`ubuntu-22.04-arm`, `ubuntu-24.04-arm`,
-  `macos-15-intel`): check they are available to a private repository.
-- Images are signed with cosign (keyless) only once the repository is public:
+  `macos-15-intel`): emulating arm64 makes a Rust build take hours.
+- Images are signed with cosign (keyless), only from a public repository:
   Rekor would publish a private repository's name.
 - The getting-started page, the README, the deployment guide and the site
-  now install from the release (download, or the images); `cargo install`
-  stays as the alternative. Every workflow passes `actionlint` 1.7.12.
-- Pending: macOS signing and notarisation (needs an Apple Developer account;
-  until then a browser-downloaded binary needs `xattr -d
-  com.apple.quarantine`), Windows, an install script, and Docker build caching
-  (Rust layers would fill the 10 GB cache).
+  install from the release (download, or the images); `cargo install` stays
+  as the alternative. Every workflow passes `actionlint` 1.7.12.
+- v0.2.1 published everything but the `forma` image; what is pending is in
+  `OPEN_SOURCE.md` ("Releases").
