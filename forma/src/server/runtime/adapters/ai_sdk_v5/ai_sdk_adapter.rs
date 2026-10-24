@@ -20,7 +20,9 @@ use crate::{
         get_user_id,
         msg_extractor::UserChatMessage,
         runtime::{
-            adapters::{NewSessionResult, ResumeResult, create_session, resume_completion, stream},
+            adapters::{
+                Answer, NewSessionResult, ResumeResult, create_session, resume_completion, stream,
+            },
             default_context_window_messages,
         },
         state::RuntimeState,
@@ -69,10 +71,10 @@ impl AiSdkV5Adapter {
         headers: HeaderMap,
         State(state): State<T>,
         Json(req): Json<ResumeRequest>,
-    ) -> Result<Json<ResumeResult<AiSdkV5Message>>, (StatusCode, String)> {
+    ) -> Result<Json<Answer<ResumeResult<AiSdkV5Message>>>, (StatusCode, String)> {
         let args = state.job_args(&headers, n_messages).await?;
         let a = resume_completion::<DB, AiSdkV5Message>(args, req).await?;
-        Ok(Json(a.result))
+        Ok(Json(a.into()))
     }
 
     async fn stream<DB: FormaDB, T: RuntimeState<DB>>(
@@ -81,6 +83,9 @@ impl AiSdkV5Adapter {
         State(state): State<T>,
         UserChatMessage(message): UserChatMessage<AiSdkV5Message>,
     ) -> Result<Sse<impl Stream<Item = Result<Event, FormaError>>>, (StatusCode, String)> {
+        // Before the conversation is touched: a part the agent cannot read
+        // is the client's to fix.
+        message.check()?;
         let args = state.job_args(&headers, n_messages).await?;
         let r = stream::<DB, AiSdkV5Message, AiSdkV5Event>(args, message).await?;
         Ok(r)

@@ -12,6 +12,7 @@ use forma::cli::{
     expand::ExpandArgs,
     init::InitArgs,
     login::LoginArgs,
+    openapi::OpenApiArgs,
     tester::TesterArgs,
 };
 #[cfg(not(feature = "cli"))]
@@ -120,6 +121,14 @@ enum Commands {
     Tester(TesterArgs),
     /// Authenticate MCP servers via browser-based OAuth2 and persist the tokens.
     Login(LoginArgs),
+    /// Prints the OpenAPI (3.1) description of one of Forma's HTTP APIs.
+    ///
+    /// A runtime serves the same paths to every client, but what they take
+    /// and return depends on its `client:`, so there is one description per
+    /// client: `sync`, `sse`, `ai-sdk-v5`, `whatsapp` and `telegram`. The
+    /// manager's is `manager`. Use it to generate a client, to explore the API
+    /// in a viewer, or to give it to a coding agent.
+    Openapi(OpenApiArgs),
 }
 
 /// Forma
@@ -159,6 +168,7 @@ fn main() {
         args.command,
         Commands::Init(_)
             | Commands::Expand(_)
+            | Commands::Openapi(_)
             | Commands::DatasetUpload(_)
             | Commands::DatasetList(_)
     );
@@ -182,6 +192,7 @@ fn main() {
             Commands::Expand(args) => args.expand().await.map_err(|e| format!("{e}")),
             Commands::Init(args) => args.init(),
             Commands::Login(args) => args.login().await.map_err(|e| format!("{e}")),
+            Commands::Openapi(args) => args.describe().map_err(|e| format!("{e}")),
         }
     });
 

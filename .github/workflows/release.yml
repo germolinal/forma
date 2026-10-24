@@ -91,7 +91,7 @@ jobs:
         run: |
           name="forma-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp "target/${{ matrix.target }}/release/forma" LICENSE README.md "dist/$name/"
+          cp "target/${{ matrix.target }}/release/forma" ../LICENSE README.md "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v7
         with:
@@ -171,6 +171,7 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.licenses=MIT
           outputs: type=image,name=${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
           sbom: true
           provenance: mode=max

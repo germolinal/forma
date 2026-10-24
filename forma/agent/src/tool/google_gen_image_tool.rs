@@ -373,7 +373,12 @@ impl GoogleGenImageTool {
         tx.send(SSEvent::Usage {
             node_id: USAGE_NODE_ID.to_string(),
             model: model.to_string(),
-            provider: "vertex-ai".to_string(),
+            // Named as every other call to Vertex AI is, so that its tokens are
+            // priced under the same key (OpenTelemetry's provider name).
+            provider: genai_client::genai_client_trait::LLMProvider::VertexAI
+                .otel()
+                .to_string(),
+            server_address: genai_client::vertex_ai::vertex_ai_host(&self.location),
             usage: TokenUsage::from(usage),
         })
         .map_err(|e| {
@@ -1033,6 +1038,7 @@ mod tests {
             node_id,
             model,
             provider,
+            server_address,
             usage,
         }) = rx.try_recv()
         else {
@@ -1040,7 +1046,11 @@ mod tests {
         };
         assert_eq!(node_id, USAGE_NODE_ID);
         assert_eq!(model, "gemini-3.1-flash-image-001");
-        assert_eq!(provider, "vertex-ai");
+        assert_eq!(provider, "gcp.vertex_ai");
+        assert_eq!(
+            server_address,
+            genai_client::vertex_ai::vertex_ai_host(&tool().location)
+        );
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
 

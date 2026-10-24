@@ -18,6 +18,9 @@ pub mod expand;
 /// Initialize a new project
 pub mod init;
 
+/// Describe Forma's HTTP APIs (OpenAPI)
+pub mod openapi;
+
 /// Helpers for paths
 mod path_file;
 

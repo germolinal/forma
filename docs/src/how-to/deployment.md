@@ -253,7 +253,7 @@ curl -X POST http://localhost:3001/deployments \
 ```
 
 ```json
-{"deployment_id":"74fe248c-81a8-467c-b8c7-41f27ab5cff0"}
+{"deployment_id":"6716a3c1f1a2b3c4d5e6f708"}
 ```
 
 ### 3. Talk to it
@@ -264,7 +264,7 @@ Requests to the runtime are just like those to a single-tenant server, plus an `
 curl http://localhost:8080/v1/init \
   -H "X-API-Key: key-not-for-production" \
   -H "X-User-ID: user-id" \
-  -H "X-Deployment-ID: 74fe248c-81a8-467c-b8c7-41f27ab5cff0"
+  -H "X-Deployment-ID: 6716a3c1f1a2b3c4d5e6f708"
 ```
 
 ```json
@@ -281,15 +281,16 @@ Send a new definition with `PUT` (and the `deployment_id` you got earlier) to up
 curl -X PUT http://localhost:3001/deployments \
   -H "X-User-ID: owner" \
   -H "Content-Type: application/json" \
-  -d '{"deployment_id": "74fe248c-81a8-467c-b8c7-41f27ab5cff0", "definition": { ... }}'
+  -d '{"deployment_id": "6716a3c1f1a2b3c4d5e6f708", "definition": { ... }}'
 ```
 
 And delete it with `DELETE`:
 
 ```sh
 curl -X DELETE http://localhost:3001/deployments \
+  -H "X-User-ID: owner" \
   -H "Content-Type: application/json" \
-  -d '{"deployment_id": "74fe248c-81a8-467c-b8c7-41f27ab5cff0"}'
+  -d '{"deployment_id": "6716a3c1f1a2b3c4d5e6f708"}'
 ```
 
 ### The manager's API
@@ -308,7 +309,7 @@ curl -X DELETE http://localhost:3001/deployments \
 | `PATCH`  | `/sessions/{session_id}`  | Rename a conversation                                                           |
 | `DELETE` | `/sessions/{session_id}`  | Delete a conversation                                                           |
 
-Every endpoint that acts on behalf of a user expects the `X-User-ID` header.
+Every endpoint that acts on behalf of a user expects the `X-User-ID` header. Every request and answer is explained in [The manager's API](../api/manager.md), and described in OpenAPI (`forma openapi manager`).
 
 ## Environment variables
 

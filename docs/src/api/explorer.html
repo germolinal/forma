@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forma API explorer</title>
+    <link rel="icon" href="../favicon.svg" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.33.1/swagger-ui.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        background: #ffffff;
+        font-family: system-ui, sans-serif;
+      }
+      .forma-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1.5rem;
+        align-items: baseline;
+        padding: 0.75rem 1rem;
+        background: #141922;
+        color: #f4f1ea;
+      }
+      .forma-bar strong {
+        font-size: 1.1rem;
+      }
+      .forma-bar a {
+        color: #f2a93b;
+      }
+      .forma-bar nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="forma-bar">
+      <strong>Forma API explorer</strong>
+      <nav>
+        <a href="index.html">How the APIs work</a>
+        <a href="runtime.html">The runtime's API</a>
+        <a href="manager.html">The manager's API</a>
+        <a href="index.html#the-descriptions">Download the descriptions</a>
+      </nav>
+    </header>
+    <div id="explorer"></div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.33.1/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.33.1/swagger-ui-standalone-preset.js"></script>
+    <script>
+      // One description per API: the runtime's, for each client, and the
+      // manager's. `?api=sse` opens one of them.
+      const apis = [
+        ["sse", "Runtime: client sse"],
+        ["sync", "Runtime: client sync"],
+        ["ai-sdk-v5", "Runtime: client ai-sdk-v5"],
+        ["whatsapp", "Runtime: client whatsapp"],
+        ["telegram", "Runtime: client telegram"],
+        ["manager", "Manager"],
+      ];
+      const asked = new URLSearchParams(location.search).get("api");
+      const primary = apis.find(([id]) => id === asked) || apis[0];
+      SwaggerUIBundle({
+        dom_id: "#explorer",
+        urls: apis.map(([id, name]) => ({ url: `openapi/${id}.json`, name })),
+        "urls.primaryName": primary[1],
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "StandaloneLayout",
+        deepLinking: true,
+        defaultModelsExpandDepth: 0,
+        // Requests go to wherever the reader's server runs: there is no
+        // server here to try them against.
+        supportedSubmitMethods: [],
+      });
+    </script>
+  </body>
+</html>

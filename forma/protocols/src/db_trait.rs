@@ -312,9 +312,15 @@ pub trait FormaDB: 'static + Clone + Debug + Sized + Send + Sync {
         credentials: Option<DeploymentCredentials>,
     ) -> Result<String, FormaError>;
 
-    /// Removes an deployment from the DB, based on its id.
-    /// Returns the ID of the removed agent.
-    async fn remove_agent_deployment(&self, deployment_id: &str) -> Result<String, FormaError>;
+    /// Removes a deployment from the DB, based on its id, if `user_id` owns
+    /// it: one owned by someone else is reported as not found
+    /// ([`FormaError::AgentDeploymentNotFound`]), so its existence is not
+    /// leaked. Returns the ID of the removed deployment.
+    async fn remove_agent_deployment(
+        &self,
+        user_id: &str,
+        deployment_id: &str,
+    ) -> Result<String, FormaError>;
 }
 
 #[cfg(test)]

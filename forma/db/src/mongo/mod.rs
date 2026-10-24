@@ -411,11 +411,17 @@ impl FormaDB for MongoDB {
         Ok(deployment_id.to_string())
     }
 
-    async fn remove_agent_deployment(&self, deployment_id: &str) -> Result<String, FormaError> {
+    async fn remove_agent_deployment(
+        &self,
+        user_id: &str,
+        deployment_id: &str,
+    ) -> Result<String, FormaError> {
         let id = str_to_id(deployment_id)?;
+        // Matching on the owner as well means a deployment belonging to
+        // someone else simply does not match, and is reported as not found.
         let result = self
             .deployments_collection
-            .delete_one(doc! { "_id": id })
+            .delete_one(doc! { "_id": id, "owner_id": user_id })
             .await
             .map_err(|e| FormaError::Execution(e.to_string()))?;
 

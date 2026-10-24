@@ -7,7 +7,6 @@ use crate::{
 };
 use async_trait::async_trait;
 use derive::FormaDocs;
-use reqwest::Error as ReqwestError;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
 
@@ -210,28 +209,44 @@ impl OpenAITool {
     }
 }
 
+/// A call to a function tool, as the model made it.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OpenAIFunctionToolChoice {
+    /// The arguments, as a JSON string.
     pub arguments: String,
+    /// The tool's name.
     pub name: String,
 }
 
+/// A call to a custom tool, as the model made it.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OpenAICustomToolChoice {
+    /// What the tool was given.
     pub input: String,
+    /// The tool's name.
     pub name: String,
 }
 
+/// A tool call the model made: its `type` says what kind of tool.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum OpenAIToolChoice {
+    /// A call to a function tool: every tool Forma offers.
     Function {
+        /// The call's id, which its result (a `tool` message) repeats.
         id: String,
+        /// What is called, and with what.
         function: OpenAIFunctionToolChoice,
     },
+    /// A call to a custom tool.
     Custom {
+        /// The call's id.
         id: String,
+        /// What is called, and with what.
         function: OpenAICustomToolChoice,
     },
 }
@@ -372,6 +387,8 @@ impl ToolCallAccumulator {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Default, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// Who wrote a message.
 pub enum OpenAIRole {
     Assistant,
     #[default]
@@ -394,10 +411,16 @@ impl Display for OpenAIRole {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// Audio the model answered with.
 pub struct OpenAIAudioResponse {
+    /// The audio, base64.
     pub data: String,
+    /// When the audio stops being available to refer back to (Unix seconds).
     pub expires_at: usize,
+    /// The audio's id.
     pub id: String,
+    /// What the audio says.
     pub transcript: String,
 }
 
@@ -455,7 +478,10 @@ pub struct OpenAIUsage {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// Text.
 pub struct OpenAITextPart {
+    /// The text.
     pub text: String,
 }
 
@@ -468,6 +494,7 @@ impl From<String> for OpenAITextPart {
 /// Tells the model what level of detail to use when processing and understanding the image
 #[derive(Debug, Default, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum OpenAIVisionDetail {
     ///  lets the model process the image with a budget of 85 tokens.
     /// The model receives a low-resolution 512px x 512px version of the
@@ -482,17 +509,27 @@ pub enum OpenAIVisionDetail {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// Where an image is.
 pub struct OpenAIImageUrl {
+    /// A `data:` URL (`data:image/png;base64,...`), or a URL the model's
+    /// provider can reach.
     pub url: String,
+    /// How closely the model should look at it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<OpenAIVisionDetail>,
 }
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// An image.
 pub struct OpenAIImagePart {
+    /// Where it is.
     pub image_url: OpenAIImageUrl,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// A recording, inline.
 pub struct OpenAIInputAudio {
     /// Base64 encoded audio data.
     pub data: String,
@@ -500,11 +537,16 @@ pub struct OpenAIInputAudio {
     pub format: AudioFormat,
 }
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// A recording.
 pub struct OpenAIAudioPart {
+    /// The recording.
     pub input_audio: OpenAIInputAudio,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// A file: a document, or audio in any container.
 pub struct OpenAIFile {
     /// The base64 encoded file data, used when passing the file to the model as a string.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -517,17 +559,26 @@ pub struct OpenAIFile {
     pub filename: Option<String>,
 }
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// A file.
 pub struct OpenAIFilePart {
+    /// The file.
     pub file: OpenAIFile,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// One piece of a message's content, its `type` saying what it is.
 pub enum OpenAIMessagePart {
+    /// Text.
     Text(OpenAITextPart),
+    /// An image.
     ImageUrl(OpenAIImagePart),
+    /// A recording, base64 with its format named.
     InputAudio(OpenAIAudioPart),
+    /// A file, base64 in a `data:` URL.
     File(OpenAIFilePart),
 }
 
@@ -550,8 +601,12 @@ impl From<String> for OpenAIMessagePart {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// What a message says: text, or a list of parts.
 pub enum OpenAIMessageContent {
+    /// Just text.
     String(String),
+    /// Text, images, recordings and files.
     Parts(Vec<OpenAIMessagePart>),
 }
 
@@ -605,58 +660,82 @@ impl From<&OpenAIMessageContent> for String {
 
 /// System message (role: "system")
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OpenAISystemMessage {
+    /// What it says.
     pub content: OpenAIMessageContent,
+    /// Who wrote it, among several of the same role.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
 
 /// User message (role: "user")
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OpenAIUserMessage {
+    /// What it says: text, or text, images, recordings and files.
     pub content: OpenAIMessageContent,
+    /// Who wrote it, among several of the same role.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
 
 /// Developer message (role: "developer")
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OpenAIDeveloperMessage {
+    /// What it says.
     pub content: OpenAIMessageContent,
 }
 
 /// Assistant message (role: "assistant")
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OpenAIAssistantMessage {
+    /// What the agent said: its text, and the files it produced.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<OpenAIMessageContent>,
+    /// Why the model refused to answer, if it did.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
+    /// Who wrote it, among several of the same role.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     // pub annotations: .. not supported yet
+    /// Audio the model answered with.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio: Option<OpenAIAudioResponse>,
+    /// The tools the model called.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<OpenAIToolChoice>,
 }
 
 /// Tool result message (role: "tool")
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OpenAIToolMessage {
     /// The ID of the tool call this message is responding to
     pub tool_call_id: String,
+    /// What the tool returned.
     pub content: OpenAIMessageContent,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "role")]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+/// A message, in the shape of OpenAI's chat messages: its `role` says who
+/// wrote it.
 pub enum OpenAIChatMessage {
+    /// Instructions to the model.
     System(OpenAISystemMessage),
+    /// What the user wrote.
     User(OpenAIUserMessage),
+    /// Instructions to the model.
     Developer(OpenAIDeveloperMessage),
+    /// What the agent said.
     Assistant(OpenAIAssistantMessage),
+    /// A tool call's result.
     Tool(OpenAIToolMessage),
 }
 
@@ -1573,14 +1652,14 @@ impl GenaiClientTrait for OpenaiV1 {
         allowed_tools: Option<Vec<String>>,
     ) -> Result<Self::Response, String> {
         let body = self.get_request_body(messages, allowed_tools);
-        let request = rest_request(self, &body).expect("LLM client could not build request");
+        let request = rest_request(self, &body)?;
         post::<Self::Response>(request).await
     }
     async fn stream<M: Into<Self::Message> + Send + 'static, O: From<Self::Chunk>>(
         &self,
         messages: Vec<M>,
         allowed_tools: Option<Vec<String>>,
-    ) -> Result<ByteStream<O>, ReqwestError> {
+    ) -> Result<ByteStream<O>, String> {
         let mut body = self.get_request_body(messages, allowed_tools);
         body.stream = Some(true);
         // Ask for a final usage chunk so token counts are available while streaming.
@@ -1588,7 +1667,7 @@ impl GenaiClientTrait for OpenaiV1 {
             include_usage: Some(true),
             ..Default::default()
         });
-        let request = rest_request(self, &body).expect("LLM client could not build request");
+        let request = rest_request(self, &body)?;
         post_stream::<Self::Chunk, O>(request).await
     }
 }

@@ -39,11 +39,15 @@ impl MultiDB {
 
 #[async_trait::async_trait]
 impl FormaDB for MultiDB {
-    async fn remove_agent_deployment(&self, deployment_id: &str) -> Result<String, FormaError> {
+    async fn remove_agent_deployment(
+        &self,
+        user_id: &str,
+        deployment_id: &str,
+    ) -> Result<String, FormaError> {
         match self {
-            Self::Mongo(db) => db.remove_agent_deployment(deployment_id).await,
-            Self::None(db) => db.remove_agent_deployment(deployment_id).await,
-            Self::File(db) => db.remove_agent_deployment(deployment_id).await,
+            Self::Mongo(db) => db.remove_agent_deployment(user_id, deployment_id).await,
+            Self::None(db) => db.remove_agent_deployment(user_id, deployment_id).await,
+            Self::File(db) => db.remove_agent_deployment(user_id, deployment_id).await,
         }
     }
     async fn remove_oauth_tokens(&self, user_id: &str) -> Result<(), FormaError> {

@@ -11,6 +11,10 @@ pub use runtime::{Client, FormaRuntime, RuntimeTrait};
 /// behaviour of an Axum App State
 /// for Forma
 pub mod state;
+
+/// The OpenAPI descriptions of the servers' HTTP APIs.
+#[cfg(feature = "openapi")]
+pub mod openapi;
 #[cfg(any(feature = "multi-tenant", feature = "cli"))]
 use agent::Agent;
 #[cfg(feature = "cli")]

@@ -24,6 +24,7 @@ pub const UNANSWERED_TOOL_CALL_RESULT: &str = "The user sent a new message inste
 
 /// The request body for the resume endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ResumeRequest {
     /// ID of the pending tool call this feedback applies to.
     pub tool_call_id: String,
@@ -63,6 +64,7 @@ impl ResumeRequest {
 /// Represents a cached result of a tool call,
 /// to be used when resuming a session
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CachedToolResult {
     /// Original ID of the tool call, used to identify the result
     pub tool_call_id: String,
@@ -77,6 +79,7 @@ pub struct CachedToolResult {
 
 /// Represents the ID of a session, used to identify it in the database
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SessionId(pub String);
 
 impl Display for SessionId {
@@ -97,6 +100,7 @@ pub type SessionData = GenericSessionData<SessionId, DateTime<Utc>>;
 /// A lightweight summary of a session, for listing a user's past
 /// conversations without pulling in every message they contain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SessionSummary {
     /// The ID of the session.
     pub id: String,
@@ -152,13 +156,17 @@ pub fn normalize_session_name(name: &str) -> Option<String> {
 
 /// Data associated with a conversation, to be stored in the database
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = SessionData, bound = ""))]
 pub struct GenericSessionData<ID, DATE> {
     /// The ID of the session itslf
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub id: Option<ID>,
 
     /// The date and time when the session was created
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = DateTime))]
     pub created_at: Option<DATE>,
 
     /// A flag indicating whether the session is suspended,
@@ -170,6 +178,7 @@ pub struct GenericSessionData<ID, DATE> {
     /// which keep a second run from writing to the same history at once —
     /// say, a user who left mid-run and came back to send another message.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = DateTime))]
     pub running_since: Option<DATE>,
     /// The ID of the user who ownes this session. When a new
     /// message is requested, Forma will check that the user owns
@@ -188,6 +197,7 @@ pub struct GenericSessionData<ID, DATE> {
     pub name: Option<String>,
     /// The messages that have been exchanged in this session
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<crate::message::GenericFormaMessage<String>>))]
     pub messages: Vec<FormaMessage>,
     /// Contains the variables available for templates of
     /// runnables downstream.
@@ -520,7 +530,11 @@ mod tests {
             Ok(String::new())
         }
 
-        async fn remove_agent_deployment(&self, deployment_id: &str) -> Result<String, FormaError> {
+        async fn remove_agent_deployment(
+            &self,
+            _user_id: &str,
+            deployment_id: &str,
+        ) -> Result<String, FormaError> {
             Ok(deployment_id.to_string())
         }
     }

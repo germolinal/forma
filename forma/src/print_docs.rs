@@ -60,5 +60,15 @@ mod test {
             current_summary, summary
         );
         std::fs::write(summary_file, whole_summary.as_bytes()).unwrap();
+
+        // The OpenAPI descriptions of the HTTP APIs, which `api/explorer.html`
+        // shows, and people (and their agents) download.
+        let dir = format!("{forma_dir}/api/openapi");
+        std::fs::create_dir_all(&dir).unwrap();
+        for api in crate::server::openapi::APIS {
+            let spec = crate::server::openapi::spec(api).unwrap();
+            let json = serde_json::to_string_pretty(&spec).unwrap() + "\n";
+            std::fs::write(format!("{dir}/{api}.json"), json).unwrap();
+        }
     }
 }

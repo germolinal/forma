@@ -83,6 +83,17 @@
 - [Client applications](./examples/clients/clients-intro.md)
   - [Vercel AI-SDK v5 - Part 1](./examples/clients/vercel-aisdk-5-setup.md)
   - [Vercel AI-SDK v5 - Part 2](./examples/clients/vercel-aisdk-5-persist.md)
+
+---
+
+# Building on Forma's APIs
+
+- [Forma's APIs](./api/index.md)
+  - [The runtime's API](./api/runtime.md)
+  - [Running a multi-tenant platform](./api/multi-tenant.md)
+  - [The manager's API](./api/manager.md)
+  - [Usage and billing](./api/usage-and-billing.md)
+
 ---
 
 # Help

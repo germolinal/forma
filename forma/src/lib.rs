@@ -13,6 +13,11 @@
 #[cfg(feature = "api")]
 pub mod api;
 
+/// The manager's HTTP API (`forma-manager`), which deploys agents to
+/// multi-tenant servers.
+#[cfg(feature = "api")]
+pub mod manager;
+
 #[cfg(debug_assertions)]
 mod print_docs;
 

@@ -12,8 +12,8 @@ ignore = []
 
 [licenses]
 # Permissive licences, plus MPL-2.0 (copyleft per file: fine to depend on;
-# changes to those files stay MPL). Anything else fails, and is either allowed
-# here on purpose or replaced. Revisit with Forma's own licence.
+# changes to those files stay MPL). All of them can ship inside MIT-licensed
+# Forma. Anything else fails, and is either allowed here on purpose or replaced.
 allow = [
   "MIT",
   "MIT-0",

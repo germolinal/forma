@@ -1,191 +1,156 @@
 use genai_client::{AudioFormat, SSEvent, openai::v1::OpenAIMessagePart};
-use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::server::runtime::adapters::ClientSSE;
 
-#[derive(Clone, Debug, Deserialize)]
+/// One event of the stream the `ai-sdk-v5` client sends, in the protocol of
+/// Vercel's AI SDK (v5): each is the JSON of one `data:` line.
+///
+/// `type` says what happened. Text, reasoning and tool calls follow the AI
+/// SDK's own UI message stream parts; what only Forma reports travels as the
+/// SDK's custom `data-*` parts.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type")]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum AiSdkV5Event {
+pub enum AiSdkV5Event {
+    /// The stream was aborted.
     Abort {
+        /// Why.
         reason: String,
     },
+    /// The agent failed; the stream ends here.
     Error {
+        /// What went wrong.
         #[serde(rename = "errorText")]
         error_text: String,
     },
+    /// The agent started working on the message. Always the first event.
     Start {
+        /// The id of the job, which the usage report at the end repeats.
         #[serde(rename = "messageId")]
         message_id: String,
     },
+    /// A text part begins.
     TextStart {
+        /// The id shared by the part's `text-delta`s and `text-end`.
         id: String,
     },
+    /// More text for the part `id` began.
     TextDelta {
+        /// The part this text belongs to.
         id: String,
+        /// The text, to append to what came before.
         delta: String,
     },
+    /// The text part `id` is complete.
     TextEnd {
+        /// The part that ended.
         id: String,
     },
+    /// A reasoning part begins (models that expose their reasoning).
     ReasoningStart {
+        /// The id shared by the part's deltas and end.
         id: String,
     },
+    /// More reasoning for the part `id`.
     ReasoningDelta {
+        /// The part this reasoning belongs to.
         id: String,
+        /// The reasoning, to append to what came before.
         delta: String,
     },
+    /// The reasoning part `id` is complete.
     ReasoningEnd {
+        /// The part that ended.
         id: String,
     },
+    /// The agent is about to call a tool.
     ToolInputStart {
+        /// The call's id, which its input and output repeat.
         #[serde(rename = "toolCallId")]
         tool_call_id: String,
+        /// The tool's name, as the agent defines it.
         #[serde(rename = "toolName")]
         tool_name: String,
     },
+    /// The arguments of a tool call. Also how a call that waits for an answer
+    /// (an approval, or a delegated tool's result) is announced: the stream
+    /// then ends without its output, and the call is answered with
+    /// `/v1/resume`.
     ToolInputAvailable {
+        /// The call's id.
         #[serde(rename = "toolCallId")]
         tool_call_id: String,
+        /// The tool's name.
         #[serde(rename = "toolName")]
         tool_name: String,
+        /// The arguments, as the model wrote them.
         input: serde_json::Value,
     },
+    /// What a tool call returned.
     ToolOutputAvailable {
+        /// The call's id.
         #[serde(rename = "toolCallId")]
         tool_call_id: String,
+        /// The tool's result.
         output: serde_json::Value,
     },
-
+    /// The job is done, and its turn stored: the next message can be sent.
     Finish,
-
-    /// The AI SDK's own file part, which takes a URL — a `data:` URL is what
-    /// an inline document becomes — plus the media type it should render as.
+    /// A file produced during the turn: an image a tool generated, a file it
+    /// fetched, or media the model returned. The AI SDK's own file part.
     File {
+        /// A `data:` URL, or a URL the client can reach.
         url: String,
+        /// What the file is (`image/png`, …).
         #[serde(rename = "mediaType")]
         media_type: String,
     },
-
-    /// Serializes as `{"type":"data-<name>","data":{...}}`.
-    Data {
-        name: String,
-        data: serde_json::Value,
+    /// Answer to a `/v1/resume`: other calls of the same turn are still
+    /// waiting for an answer.
+    DataStillSuspended {
+        /// Always empty.
+        data: EmptyData,
+    },
+    /// How well the answer is grounded in the sources it used.
+    DataGroundingScore {
+        /// The score.
+        data: GroundingScoreData,
+    },
+    /// A document used as a source for the answer.
+    DataReference {
+        /// The document.
+        data: ReferenceData,
     },
 }
 
-impl Serialize for AiSdkV5Event {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::Abort { reason } => {
-                let mut m = s.serialize_map(Some(2))?;
-                m.serialize_entry("type", "abort")?;
-                m.serialize_entry("reason", reason)?;
-                m.end()
-            }
-            Self::Error { error_text } => {
-                let mut m = s.serialize_map(Some(2))?;
-                m.serialize_entry("type", "error")?;
-                m.serialize_entry("errorText", error_text)?;
-                m.end()
-            }
-            Self::Start { message_id } => {
-                let mut m = s.serialize_map(Some(2))?;
-                m.serialize_entry("type", "start")?;
-                m.serialize_entry("messageId", message_id)?;
-                m.end()
-            }
-            Self::TextStart { id } => {
-                let mut m = s.serialize_map(Some(2))?;
-                m.serialize_entry("type", "text-start")?;
-                m.serialize_entry("id", id)?;
-                m.end()
-            }
-            Self::TextDelta { id, delta } => {
-                let mut m = s.serialize_map(Some(3))?;
-                m.serialize_entry("type", "text-delta")?;
-                m.serialize_entry("id", id)?;
-                m.serialize_entry("delta", delta)?;
-                m.end()
-            }
-            Self::TextEnd { id } => {
-                let mut m = s.serialize_map(Some(2))?;
-                m.serialize_entry("type", "text-end")?;
-                m.serialize_entry("id", id)?;
-                m.end()
-            }
-            Self::ReasoningStart { id } => {
-                let mut m = s.serialize_map(Some(2))?;
-                m.serialize_entry("type", "reasoning-start")?;
-                m.serialize_entry("id", id)?;
-                m.end()
-            }
-            Self::ReasoningDelta { id, delta } => {
-                let mut m = s.serialize_map(Some(3))?;
-                m.serialize_entry("type", "reasoning-delta")?;
-                m.serialize_entry("id", id)?;
-                m.serialize_entry("delta", delta)?;
-                m.end()
-            }
-            Self::ReasoningEnd { id } => {
-                let mut m = s.serialize_map(Some(2))?;
-                m.serialize_entry("type", "reasoning-end")?;
-                m.serialize_entry("id", id)?;
-                m.end()
-            }
-            Self::ToolInputStart {
-                tool_call_id,
-                tool_name,
-            } => {
-                let mut m = s.serialize_map(Some(3))?;
-                m.serialize_entry("type", "tool-input-start")?;
-                m.serialize_entry("toolCallId", tool_call_id)?;
-                m.serialize_entry("toolName", tool_name)?;
-                m.end()
-            }
-            Self::ToolInputAvailable {
-                tool_call_id,
-                tool_name,
-                input,
-            } => {
-                let mut m = s.serialize_map(Some(4))?;
-                m.serialize_entry("type", "tool-input-available")?;
-                m.serialize_entry("toolCallId", tool_call_id)?;
-                m.serialize_entry("toolName", tool_name)?;
-                m.serialize_entry("input", input)?;
-                m.end()
-            }
-            Self::ToolOutputAvailable {
-                tool_call_id,
-                output,
-            } => {
-                let mut m = s.serialize_map(Some(3))?;
-                m.serialize_entry("type", "tool-output-available")?;
-                m.serialize_entry("toolCallId", tool_call_id)?;
-                m.serialize_entry("output", output)?;
-                m.end()
-            }
-            Self::Finish => {
-                let mut m = s.serialize_map(Some(1))?;
-                m.serialize_entry("type", "finish")?;
-                m.end()
-            }
-            Self::File { url, media_type } => {
-                let mut m = s.serialize_map(Some(3))?;
-                m.serialize_entry("type", "file")?;
-                m.serialize_entry("url", url)?;
-                m.serialize_entry("mediaType", media_type)?;
-                m.end()
-            }
-            Self::Data { name, data } => {
-                let mut m = s.serialize_map(Some(2))?;
-                m.serialize_entry("type", &format!("data-{name}"))?;
-                m.serialize_entry("data", data)?;
-                m.end()
-            }
-        }
-    }
+/// The `data` of an event that carries nothing.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EmptyData {}
+
+/// The `data` of a `data-grounding-score` event.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct GroundingScoreData {
+    /// How well the answer is supported by its sources.
+    pub score: f64,
+}
+
+/// The `data` of a `data-reference` event.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReferenceData {
+    /// The document's title.
+    pub title: String,
+    /// Where the document is.
+    pub url: String,
+    /// The passage that was used, if known.
+    pub snippet: Option<String>,
+    /// Passages that answer the question directly, if the source gave any.
+    #[serde(rename = "extractiveAnswer")]
+    pub extractive_answer: Option<Vec<String>>,
 }
 
 impl ClientSSE for AiSdkV5Event {
@@ -237,29 +202,22 @@ impl ClientSSE for AiSdkV5Event {
                 tool_name,
                 input: arguments,
             },
-            SSEvent::StillSuspended => Self::Data {
-                name: "still-suspended".to_string(),
-                data: serde_json::json!({}),
-            },
-            SSEvent::GroundingScore { score } => Self::Data {
-                name: "grounding-score".to_string(),
-                data: serde_json::json!({
-                    "score": score,
-                }),
+            SSEvent::StillSuspended => Self::DataStillSuspended { data: EmptyData {} },
+            SSEvent::GroundingScore { score } => Self::DataGroundingScore {
+                data: GroundingScoreData { score },
             },
             SSEvent::Reference {
                 title,
                 url,
                 snippet,
                 extractive_answer,
-            } => Self::Data {
-                name: "reference".to_string(),
-                data: serde_json::json!({
-                    "title": title,
-                    "url": url,
-                    "snippet": snippet,
-                    "extractiveAnswer": extractive_answer,
-                }),
+            } => Self::DataReference {
+                data: ReferenceData {
+                    title,
+                    url,
+                    snippet,
+                    extractive_answer,
+                },
             },
             SSEvent::FileAvailable { part, .. } => {
                 let (url, media_type) = file_part_url(&part)?;
@@ -274,7 +232,7 @@ impl ClientSSE for AiSdkV5Event {
 ///
 /// Returns `None` for a text part, which has no business being announced as a
 /// file, and for a document carrying nothing renderable.
-fn file_part_url(part: &OpenAIMessagePart) -> Option<(String, String)> {
+pub(crate) fn file_part_url(part: &OpenAIMessagePart) -> Option<(String, String)> {
     match part {
         OpenAIMessagePart::Text(_) => None,
         OpenAIMessagePart::ImageUrl(p) => {
@@ -315,7 +273,7 @@ fn data_url_media_type(url: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod testing {
-    use super::AiSdkV5Event;
+    use super::{AiSdkV5Event, EmptyData, GroundingScoreData, ReferenceData};
 
     #[test]
     fn file_event_becomes_an_sdk_file_part() {
@@ -482,12 +440,29 @@ mod testing {
 
     #[test]
     fn serialise_data() {
-        let sse = AiSdkV5Event::Data {
-            name: "weather".to_string(),
-            data: serde_json::json!({"location": "SF", "temperature": 100}),
+        // Forma's own events travel as the AI SDK's `data-*` parts.
+        let sse = AiSdkV5Event::DataStillSuspended { data: EmptyData {} };
+        assert_eq!(
+            r#"{"type":"data-still-suspended","data":{}}"#,
+            serde_json::to_string(&sse).expect("Failed to serialize SSEvent")
+        );
+        let sse = AiSdkV5Event::DataGroundingScore {
+            data: GroundingScoreData { score: 0.5 },
         };
         assert_eq!(
-            r#"{"type":"data-weather","data":{"location":"SF","temperature":100}}"#,
+            r#"{"type":"data-grounding-score","data":{"score":0.5}}"#,
+            serde_json::to_string(&sse).expect("Failed to serialize SSEvent")
+        );
+        let sse = AiSdkV5Event::DataReference {
+            data: ReferenceData {
+                title: "Forma".to_string(),
+                url: "https://example.com".to_string(),
+                snippet: None,
+                extractive_answer: Some(vec!["yes".to_string()]),
+            },
+        };
+        assert_eq!(
+            r#"{"type":"data-reference","data":{"title":"Forma","url":"https://example.com","snippet":null,"extractiveAnswer":["yes"]}}"#,
             serde_json::to_string(&sse).expect("Failed to serialize SSEvent")
         );
     }

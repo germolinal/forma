@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 /// servers, and starring one that keeps a scrapbook gives the user somewhere to
 /// read what it wrote.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentFeatures {
     /// Every MCP server the agent talks to, in the order they are first
     /// reached.
@@ -73,6 +74,7 @@ pub struct AgentFeatures {
 
 /// One tool an agent can call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ToolSummary {
     /// The name the model calls it by.
     pub name: String,
@@ -86,6 +88,7 @@ pub struct ToolSummary {
 
 /// One language model an agent runs on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ModelSummary {
     /// The provider, as usage is reported under it (`openai`, `gcp.vertex_ai`…).
     pub provider: String,
@@ -95,6 +98,7 @@ pub struct ModelSummary {
 
 /// One workspace an agent reaches, and the access its tools need to it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WorkspaceAccess {
     /// The workspace, as a deployment's `workspaces` grant names it:
     /// `<bucket>/<workspace id>`.

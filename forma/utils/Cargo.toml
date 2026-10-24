@@ -3,5 +3,6 @@ name = "utils"
 version = "0.2.1"
 edition = "2024"
 publish = false
+license = "MIT"
 
 [dependencies]

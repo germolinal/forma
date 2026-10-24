@@ -3,6 +3,7 @@ name = "forma"
 version = "0.2.1"
 edition = "2024"
 publish = false
+license = "MIT"
 
 [workspace]
 members = [
@@ -18,7 +19,14 @@ members = [
 
 [features]
 default = ["api", "cli"]
-api = [ "schemars" ]
+api = [ "schemars", "openapi" ]
+# The OpenAPI descriptions of the servers' HTTP APIs (`forma openapi`).
+openapi = [
+    "dep:utoipa",
+    "dep:utoipa-axum",
+    "genai_client/openapi",
+    "protocols/openapi",
+]
 cli = [
     "api",
     "hot-reload",
@@ -69,6 +77,7 @@ tracing = "0.1"
 http = "1.5"
 derive = { path = "./derive" }
 bytes = { version="1.12", features = ["serde" ]}
+utoipa = { version = "6", features = ["chrono"] }
 
 [dependencies]
 base64 = { workspace = true }
@@ -109,6 +118,8 @@ colored = { version="3.1"}
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 # HMAC-SHA256, to check that a webhook delivery was signed by its platform.
 ring = "0.17"
+utoipa = { workspace = true, optional = true }
+utoipa-axum = { version = "0.3", optional = true }
 
 [profile.release]
 lto = "thin"
@@ -129,3 +140,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin_include)"] }
 
 [dev-dependencies]
 tempfile = "3.24"
+# The OpenAPI tests: sending requests to a router, and checking what Forma
+# sends against the schemas that describe it.
+tower = { version = "0.5", features = ["util"] }
+jsonschema = { version = "0.33", default-features = false }

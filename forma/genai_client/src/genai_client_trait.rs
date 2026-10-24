@@ -4,7 +4,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use futures::{Stream, StreamExt, TryStreamExt};
-use reqwest::{Client, Error as ReqwestError, RequestBuilder};
+use reqwest::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Debug, pin::Pin, sync::LazyLock};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -119,8 +119,9 @@ pub(crate) fn rest_request<C: GenaiClientTrait, B: Serialize>(
     let mut c = HTTP_CLIENT.post(url).json(body);
 
     if let Some(api_key_name) = C::API_KEY_NAME {
-        let errmsg = format!("could not find API key in environment variable '{api_key_name}'");
-        let key = std::env::var(api_key_name).expect(&errmsg);
+        let key = std::env::var(api_key_name).map_err(|_| {
+            format!("could not find the API key in the environment variable '{api_key_name}'")
+        })?;
         c = c.header("Authorization", format!("Bearer {key}"));
     }
 
@@ -218,6 +219,18 @@ pub trait GenaiClientTrait {
     /// The HTTP endpoint where to send requests
     fn chat_endpoint(&self) -> Result<String, String>;
 
+    /// The host requests go to (`api.openai.com`, `localhost`): OpenTelemetry's
+    /// `server.address`. With the provider's name, it is who serves, and
+    /// bills, a call: every OpenAI-compatible server speaks `openai`. Empty
+    /// when the endpoint is not a URL.
+    fn server_address(&self) -> String {
+        self.chat_endpoint()
+            .ok()
+            .and_then(|url| reqwest::Url::parse(&url).ok())
+            .and_then(|url| url.host_str().map(str::to_string))
+            .unwrap_or_default()
+    }
+
     /// Streams results
     async fn stream<
         M: Into<Self::Message> + Send + 'static,
@@ -226,7 +239,7 @@ pub trait GenaiClientTrait {
         &self,
         messages: Vec<M>,
         allowed_tools: Option<Vec<String>>,
-    ) -> Result<ByteStream<O>, ReqwestError>;
+    ) -> Result<ByteStream<O>, String>;
 
     /// Generates results
     async fn generate<M: Into<Self::Message> + Send + 'static>(
@@ -236,19 +249,17 @@ pub trait GenaiClientTrait {
     ) -> Result<Self::Response, String>;
 }
 
-pub(crate) async fn post_stream<T, O>(
-    request: RequestBuilder,
-) -> Result<ByteStream<O>, ReqwestError>
+pub(crate) async fn post_stream<T, O>(request: RequestBuilder) -> Result<ByteStream<O>, String>
 where
     T: Serialize + for<'a> Deserialize<'a> + Debug + 'static + Into<O>,
 {
-    let res = request.send().await?;
+    let res = request.send().await.map_err(|e| e.to_string())?;
     // A refusal (a malformed conversation, a rate limit, an outage) is an
     // error for the caller to report, not a reason to bring the run down.
     if let Some(e) = res.error_for_status_ref().err() {
         let body = res.text().await.unwrap_or_default();
         tracing::error!(error = %e, body, "the provider refused the request");
-        return Err(e);
+        return Err(format!("{e}: '{body}'"));
     }
 
     // Turn the response stream into a line-oriented stream
@@ -310,13 +321,14 @@ where
     }
 
     let bytes = res.bytes().await.map_err(|e| format!("{e}"))?;
-    match serde_json::from_slice::<T>(&bytes) {
-        Ok(val) => Ok(val),
-        Err(err) => panic!(
-            "JSON parse error: {err}, input was: {:?}",
+    // What a provider answers is not Forma's to promise: an answer it cannot
+    // read is the provider's error, reported, not a reason to crash.
+    serde_json::from_slice::<T>(&bytes).map_err(|err| {
+        format!(
+            "could not read the provider's answer ({err}): {}",
             String::from_utf8_lossy(&bytes)
-        ),
-    }
+        )
+    })
 }
 
 #[cfg(test)]
