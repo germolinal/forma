@@ -1,0 +1,2254 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Forma Manager API",
+    "description": "The API of `forma-manager`, which deploys agents to multi-tenant Forma servers and keeps what they share: users' OAuth tokens (for MCP servers) and their conversations.\n\n**The manager does not authenticate its callers.** It trusts `X-User-ID`, and anyone who can reach it can deploy, change and delete agents. It is meant to be called by your own back-end, on a private network, and must never be exposed to the internet. Your back-end authenticates the user, and sends their id.\n\nAgents are sent as their *expanded* definition (`forma expand -f json`), which the manager compiles itself: with the deploying user's OAuth tokens, so that MCP servers can be reached. A multi-tenant runtime then serves each deployment to requests whose `X-Deployment-ID` names it.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "0.2.1"
+  },
+  "paths": {
+    "/agents/check": {
+      "post": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Checks an agent definition without deploying it.",
+        "description": "The definition is checked (ids, names), compiled (connecting to its MCP\nservers with the tokens of `X-User-ID`, unless `mcp=unconnected`), and the\ncompiled agent checked as a runtime would before serving it. What it\nreports is what the agent uses: what a deployment of it needs to be\ngranted, and what a user needs to be connected to.",
+        "operationId": "check_agent",
+        "parameters": [
+          {
+            "name": "mcp",
+            "in": "query",
+            "description": "How the agent's MCP servers are treated: `connect` (the default) to\neach with the caller's tokens, as running the agent would; or\n`unconnected`, to check everything else without them, for a caller who\nhas not connected those servers yet. Without connecting, the names of\na server's tools are unknown, so whether they clash is not checked.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "How `/agents/check` treats the agent's MCP servers.",
+              "enum": [
+                "connect",
+                "unconnected"
+              ]
+            }
+          },
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user who checks the agent. Their OAuth tokens are used to reach its MCP servers.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The agent's expanded definition (`forma expand -f json`): an [Agent](https://germolinal.github.io/forma/docs/reference_docs/auto-agent.html), with every `$file` inlined.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The agent compiled, and passed its checks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckAgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The definition is malformed, does not compile, or does not pass the checks; or `X-User-ID` is missing. The message says why.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body is not an agent definition (an unknown field, a missing one, a wrong type)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents/generate": {
+      "post": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Writes an agent definition from a description.",
+        "description": "A language model (Gemini, on Vertex AI: the manager needs Google Cloud\ncredentials) writes the definition. Nothing is checked or deployed: check\nit with `POST /agents/check` before deploying it.",
+        "operationId": "generate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The agent's definition: an [Agent](https://germolinal.github.io/forma/docs/reference_docs/auto-agent.html)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body has no `prompt`",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The model could not be reached, or did not write a definition",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments": {
+      "put": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Updates a deployed agent.",
+        "description": "The new definition is compiled with the OAuth tokens of `X-User-ID`, who\nmust own the deployment, and replaces the old one: the runtimes serve it\nfrom the next request on, in the same conversations. Credentials are\nreplaced only under the keys the request names.",
+        "operationId": "redeploy_agent",
+        "parameters": [
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user who owns the deployment. Their OAuth tokens are used to reach its MCP servers.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeployAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The deployment is updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployAgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`X-User-ID` is missing, or `deployment_id` is not a valid id",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no such deployment, or it belongs to another user (which is not told apart, so as not to reveal it exists)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body is not a redeployment",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The agent did not compile, or could not be stored",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Deploys an agent.",
+        "description": "The definition is compiled with the OAuth tokens of `X-User-ID` (who owns\nthe deployment from now on), and stored. Multi-tenant runtimes serve it,\nwith no restart, to requests whose `X-Deployment-ID` is the id this\nreturns. Each call creates a new deployment, even for the same agent:\nupdate one with `PUT /deployments`.",
+        "operationId": "deploy_agent",
+        "parameters": [
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user who deploys the agent, and owns the deployment. Their OAuth tokens are used to reach its MCP servers.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The agent is deployed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployAgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`X-User-ID` is missing, or the definition has no `id`",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body is not a deployment (an unknown field, a missing one, a wrong type)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The agent did not compile, or could not be stored. Check it first with `POST /agents/check`, which says why.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Deletes a deployment.",
+        "description": "`X-User-ID` must own it. Runtimes stop serving it at once: requests that\nname it are answered `404`. Its conversations are kept.",
+        "operationId": "delete_deployment",
+        "parameters": [
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user who owns the deployment.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteDeploymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The deployment is deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployAgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`X-User-ID` is missing, or `deployment_id` is not a valid id",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no such deployment, or it belongs to another user (which is not told apart, so as not to reveal it exists)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body is not a deployment to delete",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The database failed",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Lists a user's conversations with an agent.",
+        "description": "The most recent first, without their messages. Conversations nobody wrote\nin (every `/v1/init` starts one) are left out.",
+        "operationId": "list_sessions",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "The agent the conversations were held with: in a multi-tenant\nruntime, the deployment's id; in a single-tenant one, the agent's\n`id`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "n",
+            "in": "query",
+            "description": "How many to list, at most.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "Whose conversations to list.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversations, the most recent first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`X-User-ID` or `agent_id` is missing",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The database failed",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Reads a conversation, with every message.",
+        "description": "What the runtime stored: the messages (user, assistant, tool), the calls\nit waits on (`pending_tool_calls`), and what it keeps to resume them.",
+        "operationId": "get_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "The conversation.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user who owns the conversation.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`X-User-ID` is missing, or the id is not valid",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no such conversation, or it belongs to another user",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Deletes a conversation, with its messages.",
+        "operationId": "delete_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "The conversation.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user who owns the conversation.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The conversation is deleted"
+          },
+          "400": {
+            "description": "`X-User-ID` is missing, or the id is not valid",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no such conversation, or it belongs to another user",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Renames a conversation.",
+        "description": "`GET /sessions` lists it under the new name (`display_name`).",
+        "operationId": "rename_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "The conversation.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user who owns the conversation.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The conversation is renamed"
+          },
+          "400": {
+            "description": "`X-User-ID` is missing, or the id is not valid",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no such conversation, or it belongs to another user",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tokens": {
+      "post": {
+        "tags": [
+          "Tokens"
+        ],
+        "summary": "Keeps the OAuth token a user obtained for an MCP server.",
+        "description": "The token replaces the one the user had for the same server, if any;\ntheir tokens for other servers are kept. Agents that use the server are\ncompiled and run with it.",
+        "operationId": "save_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The token is kept"
+          },
+          "500": {
+            "description": "The token could not be stored",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Tokens"
+        ],
+        "summary": "Forgets the token a user had for an MCP server.",
+        "description": "Forgetting a token the user does not have is not an error. Agents\ndeployed already keep working until they are compiled again (redeployed):\na running agent reads the user's tokens when it is called.",
+        "operationId": "remove_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The token is forgotten"
+          },
+          "500": {
+            "description": "The tokens could not be stored",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentFeatures": {
+        "type": "object",
+        "description": "The capabilities a compiled agent draws on.\n\nRecorded on a deployment so that everything downstream can act on it without\ncompiling the agent again: the front end badges an agent that talks to MCP\nservers, and starring one that keeps a scrapbook gives the user somewhere to\nread what it wrote.",
+        "properties": {
+          "asks_first": {
+            "type": "boolean",
+            "description": "Whether the agent asks the user before calling some of its tools."
+          },
+          "mcp_servers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every MCP server the agent talks to, in the order they are first\nreached.\n\nOne server contributes a tool per capability it reports, and several\nnodes may list the same one, so servers are deduplicated: what matters\ndownstream is which servers a user would have to be connected to, not\nhow many tools came from each."
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelSummary"
+            },
+            "description": "The language models the agent's steps run on, first-seen order: which\nprovider sees the conversation."
+          },
+          "scrapbook": {
+            "type": "boolean",
+            "description": "Whether the agent keeps a scrapbook — the private store, one per user\nper deployment, that outlives any single conversation."
+          },
+          "tool_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The kinds of tool the agent uses (see [`agent::Tool::kind`]), each once, sorted:\nwhat it can do, for whoever shows that in words."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolSummary"
+            },
+            "description": "Every tool the agent can call, first-seen order, with its kind and its\nbundle — the MCP server or workspace it comes from. For listing;\n[`AgentFeatures::tool_kinds`] is the summary."
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceAccess"
+            },
+            "description": "Every workspace the agent's tools reach, and how — exactly what its\ndeployment has to be granted, and all it should be.\n\nDerived from the tools, not from what anybody asks for: a knowledgebase\nneeds `read`, a workspace `read` and `write`. An agent can therefore have\nless access than the person deploying it — a workspace they may edit,\nreached by the agent only through a knowledgebase tool, is granted\nread-only. Scrapbooks and code-execution runs are not listed: the\nruntime derives them from whoever is calling, and grants nothing.\n\nSorted by path, scopes `read` before `write`, so the same agent always\nreports the same list."
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "description": "Assistant message (role: \"assistant\")",
+        "properties": {
+          "audio": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIAudioResponse",
+                "description": "Audio the model answered with."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenAIMessagePart"
+            },
+            "description": "What the model said: its text, and the files it produced."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who wrote it, among several of the same role."
+          },
+          "refusal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the model refused to answer, if it did."
+          },
+          "thought_signature": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "The thought signature of the part."
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenAIToolChoice"
+            },
+            "description": "The tool proposed made by the assistant"
+          }
+        }
+      },
+      "AudioFormat": {
+        "type": "string",
+        "description": "Specifies the output audio format. Must be one of wav, mp3, flac, opus, or pcm16.",
+        "enum": [
+          "wav",
+          "mp3",
+          "flac",
+          "opus",
+          "pcm16"
+        ]
+      },
+      "CachedToolResult": {
+        "type": "object",
+        "description": "Represents a cached result of a tool call,\nto be used when resuming a session",
+        "required": [
+          "tool_call_id",
+          "tool_name",
+          "result",
+          "from_root"
+        ],
+        "properties": {
+          "from_root": {
+            "type": "boolean",
+            "description": "Indicates whether the result is derived from a tool\nin a root workflow, or not."
+          },
+          "result": {
+            "description": "The result of the tool call, serialized as a JSON value"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "Original ID of the tool call, used to identify the result"
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "The name of the tool that was called"
+          }
+        }
+      },
+      "ChatMessageState": {
+        "type": "string",
+        "description": "State of a message, as reflected in the Database",
+        "enum": [
+          "sent",
+          "delivered",
+          "read",
+          "failed"
+        ]
+      },
+      "CheckAgentResponse": {
+        "type": "object",
+        "description": "What `POST /agents/check` reports about an agent that compiled and passed\nits checks.",
+        "required": [
+          "mcp_definitions",
+          "features"
+        ],
+        "properties": {
+          "features": {
+            "$ref": "#/components/schemas/AgentFeatures",
+            "description": "What the *compiled* agent turned out to use. Read from the finished\nagent rather than its definition, so it covers tools reached through\nnested workflows and servers that only name themselves on connection."
+          },
+          "mcp_definitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpToolDefinition"
+            },
+            "description": "The MCP servers the author configured authentication for, as written in\nthe definition — what a caller has to be connected to before the agent\ncan be compiled at all."
+          }
+        }
+      },
+      "DeleteDeploymentRequest": {
+        "type": "object",
+        "description": "A deployment to delete.",
+        "required": [
+          "deployment_id"
+        ],
+        "properties": {
+          "deployment_id": {
+            "type": "string",
+            "description": "The deployment to delete."
+          }
+        }
+      },
+      "DeployAgentRequest": {
+        "type": "object",
+        "description": "An agent to deploy.",
+        "required": [
+          "definition"
+        ],
+        "properties": {
+          "credentials": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "What the deployment needs to reach what is outside it, by key; stored\nencrypted (`FORMA_ENCRYPTION_KEY`). `whatsapp_api`\n(`phone_number_id`, `access_token`, `verify_token`, `app_secret`) and\n`telegram_api` (`bot_token`, `secret_token`) for the chat apps a\nruntime serves it on, and `workspaces`: the workspaces its tools may\nreach, as a list of `{\"path\": \"<bucket>/<workspace id>\", \"scopes\":\n[\"read\", \"write\"]}` (what `POST /agents/check` reports under\n`features.workspaces`).",
+            "additionalProperties": {
+              "type": "object"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "definition": {
+            "type": "object",
+            "description": "The agent's expanded definition (`forma expand -f json`): an\n[Agent](https://germolinal.github.io/forma/docs/reference_docs/auto-agent.html),\nwith every `$file` inlined. It must have an `id`."
+          }
+        }
+      },
+      "DeployAgentResponse": {
+        "type": "object",
+        "description": "A deployment, as the manager reports it.",
+        "required": [
+          "deployment_id"
+        ],
+        "properties": {
+          "deployment_id": {
+            "type": "string",
+            "description": "The deployment's id: what requests to a multi-tenant runtime send as\n`X-Deployment-ID`, and what conversations held with it have as their\n`agent_id`."
+          }
+        }
+      },
+      "FormaAudioPart": {
+        "type": "object",
+        "description": "Represents an audio part of a message.",
+        "required": [
+          "input_audio"
+        ],
+        "properties": {
+          "input_audio": {
+            "$ref": "#/components/schemas/FormaInputAudio",
+            "description": "The audio data for the part."
+          }
+        }
+      },
+      "FormaFile": {
+        "type": "object",
+        "description": "Represents a file part of a message.",
+        "properties": {
+          "file_data": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The base64 encoded file data, used when passing the file to the model as a string."
+          },
+          "file_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The ID of an uploaded file to use as input."
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of the file, used when passing the file to the model as a string."
+          }
+        }
+      },
+      "FormaFilePart": {
+        "type": "object",
+        "description": "Represents a file part of a message.",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FormaFile",
+            "description": "The file data for the part."
+          }
+        }
+      },
+      "FormaImagePart": {
+        "type": "object",
+        "description": "Represents an image part of a message.",
+        "required": [
+          "image_url"
+        ],
+        "properties": {
+          "image_url": {
+            "$ref": "#/components/schemas/FormaImageUrl",
+            "description": "The URL of the image."
+          }
+        }
+      },
+      "FormaImageUrl": {
+        "type": "object",
+        "description": "Represents a URL of an image part of a message.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "detail": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIVisionDetail",
+                "description": "The detail level of the image."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "The URL of the image."
+          }
+        }
+      },
+      "FormaInputAudio": {
+        "type": "object",
+        "description": "Represents audio data for an input audio part of a message.",
+        "required": [
+          "data",
+          "format"
+        ],
+        "properties": {
+          "data": {
+            "type": "string",
+            "description": "Base64 encoded audio data."
+          },
+          "format": {
+            "$ref": "#/components/schemas/AudioFormat",
+            "description": "The format of the encoded audio data. Currently supports \"wav\" and \"mp3\"."
+          }
+        }
+      },
+      "FormaMessageBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The message was sent by the user",
+            "required": [
+              "content",
+              "role"
+            ],
+            "properties": {
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FormaMessagePart"
+                },
+                "description": "The content of the message"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "user"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The message was sent by the developer",
+            "required": [
+              "content",
+              "role"
+            ],
+            "properties": {
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FormaMessagePart"
+                },
+                "description": "The content of the message"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "developer"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The message was sent by the system",
+            "required": [
+              "content",
+              "role"
+            ],
+            "properties": {
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FormaMessagePart"
+                },
+                "description": "The content of the message"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "system"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The message was sent by the assistant",
+            "required": [
+              "content",
+              "tool_calls",
+              "role"
+            ],
+            "properties": {
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FormaMessagePart"
+                },
+                "description": "The content of the message"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "assistant"
+                ]
+              },
+              "thought_signature": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                },
+                "description": "The thought signature of the part."
+              },
+              "tool_bundles": {
+                "type": "object",
+                "description": "The bundle of each tool call that has one, by tool call ID. Only\nthere so a reopened session renders its tool calls as the live\nstream did; never sent to the LLM.",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              },
+              "tool_calls": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OpenAIToolChoice"
+                },
+                "description": "The tool calls proposed by the assistant"
+              },
+              "tool_types": {
+                "type": "object",
+                "description": "What each tool call's tool is (see `SSEvent::ToolInputStart`), by\ntool call ID, for the same reason.",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Message contains information about the result of a tool call",
+            "required": [
+              "tool_call_id",
+              "content",
+              "role"
+            ],
+            "properties": {
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FormaMessagePart"
+                },
+                "description": "The result of the tool call"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "tool"
+                ]
+              },
+              "tool_call_id": {
+                "type": "string",
+                "description": "The ID of the tool call"
+              }
+            }
+          }
+        ],
+        "description": "Role-dependent content of a message"
+      },
+      "FormaMessagePart": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FormaTextPart",
+                "description": "Plain text."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Plain text."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FormaImagePart",
+                "description": "An image, as a data URL or a URL the provider can reach."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image_url"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "An image, as a data URL or a URL the provider can reach."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FormaAudioPart",
+                "description": "A recording, base64 with its format named."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "input_audio"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A recording, base64 with its format named."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FormaFilePart",
+                "description": "A file, base64 or by provider-side id."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A file, base64 or by provider-side id."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FormaWorkspaceFilePart",
+                "description": "A file in a workspace, by reference. Never reaches a provider as it\nis: resolving it puts the bytes in an `ImageUrl` or `File` part."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "workspace_file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A file in a workspace, by reference. Never reaches a provider as it\nis: resolving it puts the bytes in an `ImageUrl` or `File` part."
+          }
+        ],
+        "description": "One piece of a message, as Forma keeps it.\n\nThe provider-facing parts are mirrored one to one, with the same serde tags\nand field names as [`OpenAIMessagePart`], so every message stored before\nthis type existed reads back unchanged. What this adds is the parts that\nonly mean something inside Forma, and that have to be resolved into\nprovider-facing ones before a request goes out — see\n[`TryFrom<FormaMessagePart>`](OpenAIMessagePart)."
+      },
+      "WorkspaceAccess": {
+        "type": "object",
+        "description": "One workspace an agent reaches, and the access its tools need to it.",
+        "required": [
+          "path",
+          "scopes"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The workspace, as a deployment's `workspaces` grant names it:\n`<bucket>/<workspace id>`."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`read`, `write`, or both."
+          }
+        }
+      },
+      "FormaTextPart": {
+        "type": "object",
+        "description": "Represents a text part of a message.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text content of the part."
+          }
+        }
+      },
+      "FormaWorkspaceFilePart": {
+        "type": "object",
+        "description": "A file in a workspace, named rather than carried.\n\nThis is what an `attach` puts into a conversation: the bytes are fetched\nand inlined only when a request is built, so a stored session stays small\n(a 10 MiB PDF as base64 would not even fit one Mongo document) and the\nconversation keeps working when the file behind it changes.",
+        "required": [
+          "workspace_id",
+          "path"
+        ],
+        "properties": {
+          "media_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the file was when it was attached, as the store reported it."
+          },
+          "path": {
+            "type": "string",
+            "description": "The file's path inside that workspace."
+          },
+          "workspace_id": {
+            "type": "string",
+            "description": "The workspace the file belongs to."
+          }
+        }
+      },
+      "GenAgentRequest": {
+        "type": "object",
+        "description": "What an agent should do, in words.",
+        "required": [
+          "prompt"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "A description of the agent, as a person would write it."
+          }
+        }
+      },
+      "McpAuth": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Interactive OAuth 2.0 authorization_code + PKCE flow.\n\nCall [`McpToolDefinition::authenticate`] once to complete the browser login\nand obtain an [`OauthToken`]. Store that token and pass it to\n[`McpToolDefinition::connect`] on every subsequent run.\n\nUse this for MCP servers that act on behalf of a human user (e.g. Gmail,\nGoogle Calendar, GitHub). The `client_id` must match a credential registered\nwith the authorization server and configured with `http://localhost` as an\nallowed redirect URI.\n\nExample:\n```yaml\nauth:\n  type: oauth\n  client_id: GMAIL_CLIENT_ID\n  client_secret: GMAIL_CLIENT_SECRET   # omit for public clients\n  scopes:\n    - https://www.googleapis.com/auth/gmail.readonly\n```",
+            "required": [
+              "client_id",
+              "type"
+            ],
+            "properties": {
+              "callback_port": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "The port to use for the OAuth 2.0 callback URL.\nIf not specified, a random port will be chosen.",
+                "minimum": 0
+              },
+              "client_id": {
+                "type": "string",
+                "description": "Environment variable holding the OAuth 2.0 client ID."
+              },
+              "client_secret": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Environment variable holding the client secret.\nOmit for public clients that rely on dynamic registration."
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Scopes to request. If omitted, the server's advertised scopes are used."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "oauth"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Authentication configuration for an MCP server.\n\nCredentials are read from environment variables at runtime and never appear\nin config files or logs. Set the field to the name of the environment variable\nthat holds the value (e.g. `token: MY_MCP_TOKEN`)."
+      },
+      "McpToolDefinition": {
+        "type": "object",
+        "description": "Represents a tool definition for an MCP (Model-Client Protocol) server.\n\nThe server's tools are discovered at load time. `confirm_before_calling`\nand `just_for` are applied to every tool; use the `tools` map to override\neither value for specific tools by name.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "auth": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpAuth",
+                "description": "Authentication configuration. Omit for unauthenticated servers.\n\nThe one strategy is `oauth`: OAuth 2.0 with a client registered with\nthe server's authorization server, on behalf of the user."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tools": {
+            "type": "object",
+            "description": "Per-tool overrides keyed by tool name.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/McpToolOverride"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "url": {
+            "type": "string",
+            "description": "The URL of the MCP server."
+          }
+        }
+      },
+      "McpToolOverride": {
+        "type": "object",
+        "description": "Per-tool overrides for an MCP server tool.\n\nWhen present, these values take precedence over the definition-level\n`confirm_before_calling` and `just_for` defaults. A missing field means\n\"inherit the parent value.\"",
+        "properties": {
+          "confirm_before_calling": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Override `confirm_before_calling` for this specific tool."
+          },
+          "just_for": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Override `just_for` for this specific tool."
+          }
+        }
+      },
+      "ModelSummary": {
+        "type": "object",
+        "description": "One language model an agent runs on.",
+        "required": [
+          "provider",
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "The model's name at that provider."
+          },
+          "provider": {
+            "type": "string",
+            "description": "The provider, as usage is reported under it (`openai`, `gcp.vertex_ai`…)."
+          }
+        }
+      },
+      "OauthToken": {
+        "type": "object",
+        "description": "An OAuth2 access/refresh token pair for a single MCP server.\n\nKeyed by the server URL when stored in the tokens collection.\nCall [`is_expired`][OauthToken::is_expired] before use; if true, call\n[`refresh`][OauthToken::refresh] to obtain a new token.",
+        "required": [
+          "client_id",
+          "client_secret",
+          "access_token",
+          "refresh_token",
+          "expires_at",
+          "token_endpoint"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "The bearer token sent in `Authorization` headers."
+          },
+          "client_id": {
+            "type": "string",
+            "description": "The OAuth2 client ID used to obtain this token."
+          },
+          "client_secret": {
+            "type": "string",
+            "description": "The OAuth2 client secret used to refresh this token."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The UTC timestamp after which this token must be refreshed."
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "The refresh token used to obtain a new access token when this one expires."
+          },
+          "token_endpoint": {
+            "type": "string",
+            "description": "The URL of the token endpoint used for refresh requests."
+          }
+        }
+      },
+      "OpenAIAudioPart": {
+        "type": "object",
+        "description": "A recording.",
+        "required": [
+          "input_audio"
+        ],
+        "properties": {
+          "input_audio": {
+            "$ref": "#/components/schemas/OpenAIInputAudio",
+            "description": "The recording."
+          }
+        }
+      },
+      "OpenAIAudioResponse": {
+        "type": "object",
+        "description": "Audio the model answered with.",
+        "required": [
+          "data",
+          "expires_at",
+          "id",
+          "transcript"
+        ],
+        "properties": {
+          "data": {
+            "type": "string",
+            "description": "The audio, base64."
+          },
+          "expires_at": {
+            "type": "integer",
+            "description": "When the audio stops being available to refer back to (Unix seconds).",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "description": "The audio's id."
+          },
+          "transcript": {
+            "type": "string",
+            "description": "What the audio says."
+          }
+        }
+      },
+      "OpenAICustomToolChoice": {
+        "type": "object",
+        "description": "A call to a custom tool, as the model made it.",
+        "required": [
+          "input",
+          "name"
+        ],
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "What the tool was given."
+          },
+          "name": {
+            "type": "string",
+            "description": "The tool's name."
+          }
+        }
+      },
+      "OpenAIFile": {
+        "type": "object",
+        "description": "A file: a document, or audio in any container.",
+        "properties": {
+          "file_data": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The base64 encoded file data, used when passing the file to the model as a string."
+          },
+          "file_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The ID of an uploaded file to use as input."
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of the file, used when passing the file to the model as a string."
+          }
+        }
+      },
+      "OpenAIFilePart": {
+        "type": "object",
+        "description": "A file.",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/OpenAIFile",
+            "description": "The file."
+          }
+        }
+      },
+      "OpenAIFunctionToolChoice": {
+        "type": "object",
+        "description": "A call to a function tool, as the model made it.",
+        "required": [
+          "arguments",
+          "name"
+        ],
+        "properties": {
+          "arguments": {
+            "type": "string",
+            "description": "The arguments, as a JSON string."
+          },
+          "name": {
+            "type": "string",
+            "description": "The tool's name."
+          }
+        }
+      },
+      "OpenAIImagePart": {
+        "type": "object",
+        "description": "An image.",
+        "required": [
+          "image_url"
+        ],
+        "properties": {
+          "image_url": {
+            "$ref": "#/components/schemas/OpenAIImageUrl",
+            "description": "Where it is."
+          }
+        }
+      },
+      "OpenAIImageUrl": {
+        "type": "object",
+        "description": "Where an image is.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "detail": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIVisionDetail",
+                "description": "How closely the model should look at it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "A `data:` URL (`data:image/png;base64,...`), or a URL the model's\nprovider can reach."
+          }
+        }
+      },
+      "OpenAIInputAudio": {
+        "type": "object",
+        "description": "A recording, inline.",
+        "required": [
+          "data",
+          "format"
+        ],
+        "properties": {
+          "data": {
+            "type": "string",
+            "description": "Base64 encoded audio data."
+          },
+          "format": {
+            "$ref": "#/components/schemas/AudioFormat",
+            "description": "The format of the encoded audio data. Currently supports \"wav\" and \"mp3\"."
+          }
+        }
+      },
+      "OpenAIMessagePart": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAITextPart",
+                "description": "Text."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Text."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIImagePart",
+                "description": "An image."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image_url"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "An image."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIAudioPart",
+                "description": "A recording, base64 with its format named."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "input_audio"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A recording, base64 with its format named."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIFilePart",
+                "description": "A file, base64 in a `data:` URL."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A file, base64 in a `data:` URL."
+          }
+        ],
+        "description": "One piece of a message's content, its `type` saying what it is."
+      },
+      "OpenAITextPart": {
+        "type": "object",
+        "description": "Text.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text."
+          }
+        }
+      },
+      "OpenAIToolChoice": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A call to a function tool: every tool Forma offers.",
+            "required": [
+              "id",
+              "function",
+              "type"
+            ],
+            "properties": {
+              "function": {
+                "$ref": "#/components/schemas/OpenAIFunctionToolChoice",
+                "description": "What is called, and with what."
+              },
+              "id": {
+                "type": "string",
+                "description": "The call's id, which its result (a `tool` message) repeats."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "function"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A call to a custom tool.",
+            "required": [
+              "id",
+              "function",
+              "type"
+            ],
+            "properties": {
+              "function": {
+                "$ref": "#/components/schemas/OpenAICustomToolChoice",
+                "description": "What is called, and with what."
+              },
+              "id": {
+                "type": "string",
+                "description": "The call's id."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "custom"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A tool call the model made: its `type` says what kind of tool."
+      },
+      "OpenAIVisionDetail": {
+        "type": "string",
+        "description": "Tells the model what level of detail to use when processing and understanding the image",
+        "enum": [
+          "low",
+          "auto",
+          "high"
+        ]
+      },
+      "PendingToolCall": {
+        "type": "object",
+        "description": "Represents a tool that is waiting for external feedback.",
+        "required": [
+          "tool_call_id",
+          "node_id",
+          "tool_name",
+          "arguments",
+          "approved",
+          "from_root"
+        ],
+        "properties": {
+          "approved": {
+            "type": "boolean",
+            "description": "Has this been approved?"
+          },
+          "arguments": {
+            "description": "The arguments proposed by the AI"
+          },
+          "bundle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The bundle of the tool, for the same reason."
+          },
+          "from_root": {
+            "type": "boolean",
+            "description": "Indicates whether the tool call is from a root workflow, or not."
+          },
+          "node_id": {
+            "type": "string",
+            "description": "ID of the node that requested the tool call"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "ID of the pending tool call"
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "The name of the tool to be called"
+          },
+          "tool_type": {
+            "type": "string",
+            "description": "What the tool is (see `SSEvent::ToolInputStart`), so a reopened\nsession renders the request as the live stream did."
+          }
+        }
+      },
+      "RedeployAgentRequest": {
+        "type": "object",
+        "description": "A new version of a deployed agent.",
+        "required": [
+          "deployment_id",
+          "definition"
+        ],
+        "properties": {
+          "credentials": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Credentials to replace, by key; the deployment keeps every key not\nnamed here. A new definition can need different workspace grants, so\nthe caller sends the `workspaces` it re-derived — and a channel's\nsecrets, which it does not resend, survive.",
+            "additionalProperties": {
+              "type": "object"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "definition": {
+            "type": "object",
+            "description": "The agent's new expanded definition, as in `POST /deployments`."
+          },
+          "deployment_id": {
+            "type": "string",
+            "description": "The deployment to update."
+          }
+        }
+      },
+      "RemoveTokenRequest": {
+        "type": "object",
+        "description": "Which of a user's tokens to forget.",
+        "required": [
+          "user_id",
+          "mcp_url"
+        ],
+        "properties": {
+          "mcp_url": {
+            "type": "string",
+            "description": "The MCP server whose token is forgotten, as in `POST /tokens`."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "The user the token belongs to."
+          }
+        }
+      },
+      "RenameSessionRequest": {
+        "type": "object",
+        "description": "The body of a rename: what the conversation is called from now on. An\nempty name — or a missing one — puts it back to the name derived from its\nfirst message, which is what clearing the box in the UI sends.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The conversation's new name, cut to 100 characters. Empty, or absent,\nto go back to the name derived from its first message."
+          }
+        }
+      },
+      "SaveTokenRequest": {
+        "type": "object",
+        "description": "The token a user obtained for an MCP server, to keep.",
+        "required": [
+          "user_id",
+          "mcp_url",
+          "token"
+        ],
+        "properties": {
+          "mcp_url": {
+            "type": "string",
+            "description": "The MCP server the token is for: its URL, as the agent definition\nnames it (`url`). Agents look tokens up by it."
+          },
+          "token": {
+            "$ref": "#/components/schemas/OauthToken",
+            "description": "The token. It is stored encrypted (`FORMA_ENCRYPTION_KEY`), and\nrefreshed when it expires."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "The user the token belongs to."
+          }
+        }
+      },
+      "SessionData": {
+        "type": "object",
+        "description": "Data associated with a conversation, to be stored in the database",
+        "required": [
+          "user_id",
+          "agent_id"
+        ],
+        "properties": {
+          "_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The ID of the session itslf"
+          },
+          "agent_id": {
+            "type": "string",
+            "description": "The id of the agent involved in this conversation"
+          },
+          "cached_messages": {
+            "type": "object",
+            "description": "Contains the results of each node execution",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AssistantMessage"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "channel_id": {
+            "type": "string",
+            "description": "The id of the channel, as chosen by the developer (e.g., 'whatsapp' or 'web')"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The date and time when the session was created"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormaMessage"
+            },
+            "description": "The messages that have been exchanged in this session"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name the user gave this conversation, if they renamed it. `None`\n— which is every session that was never renamed, including all the\nones stored before this field existed — means the name shown for it is\nderived from its first message by [`session_display_name`]."
+          },
+          "pending_tool_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingToolCall"
+            },
+            "description": "A flag indicating whether the session is suspended,\nmeaning that it is expecting external or human feedback."
+          },
+          "running_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the run now working on this session started, if one is. Set and\ncleared through [`FormaDB::start_run`] and [`FormaDB::finish_run`],\nwhich keep a second run from writing to the same history at once —\nsay, a user who left mid-run and came back to send another message."
+          },
+          "tool_calls_results": {
+            "type": "object",
+            "description": "The result of the tools that have been called,\ncached by the tool-call id",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CachedToolResult"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "user_id": {
+            "type": "string",
+            "description": "The ID of the user who ownes this session. When a new\nmessage is requested, Forma will check that the user owns\nthe corresponding session"
+          },
+          "variables": {
+            "type": "object",
+            "description": "Contains the variables available for templates of\nrunnables downstream.",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SessionSummary": {
+        "type": "object",
+        "description": "A lightweight summary of a session, for listing a user's past\nconversations without pulling in every message they contain.",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "properties": {
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the session was created."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "A short label for the session, derived from its first user message."
+          },
+          "id": {
+            "type": "string",
+            "description": "The ID of the session."
+          }
+        }
+      },
+      "ToolSummary": {
+        "type": "object",
+        "description": "One tool an agent can call.",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "bundle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The group it belongs to: the MCP server it came from, or the workspace\ndefinition that expanded into it."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Its kind; see [`agent::Tool::kind`]."
+          },
+          "name": {
+            "type": "string",
+            "description": "The name the model calls it by."
+          }
+        }
+      },
+      "FormaMessage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FormaMessageBody",
+            "description": "The content of the message"
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "session_id"
+            ],
+            "properties": {
+              "created_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "The time of creation of this"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The ID of the message itslf"
+              },
+              "reactions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A collection of all the reactions"
+              },
+              "session_id": {
+                "type": "string",
+                "description": "The session this message belongs to"
+              },
+              "status": {
+                "$ref": "#/components/schemas/ChatMessageState",
+                "description": "The state of the message"
+              },
+              "user_id": {
+                "type": "string",
+                "description": "The user that owns this message"
+              }
+            }
+          }
+        ],
+        "description": "A user, tool, assistant, or developer message, generic\nover the potential DB id and date types"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Tokens",
+      "description": "OAuth tokens a user obtained for MCP servers. Agents that use those servers are compiled, and run, with the tokens of the user they act for."
+    },
+    {
+      "name": "Agents",
+      "description": "Agent definitions that are not deployed: checking and generating them."
+    },
+    {
+      "name": "Deployments",
+      "description": "Agents deployed to the multi-tenant runtimes, which read them from the database. A deployment's id is what requests to a runtime send as `X-Deployment-ID`."
+    },
+    {
+      "name": "Sessions",
+      "description": "Users' conversations, as the runtimes stored them. In a multi-tenant runtime, a conversation's `agent_id` is the id of the deployment it was held with."
+    }
+  ],
+  "externalDocs": {
+    "url": "https://germolinal.github.io/forma/docs/api/manager.html",
+    "description": "The manager's API, explained"
+  }
+}

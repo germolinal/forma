@@ -28,6 +28,10 @@ export const docs = {
   gettingStarted: href("docs/how-to/getting-started.html"),
   deployment: href("docs/how-to/deployment.html"),
   evals: href("docs/documentation/evals.html"),
+  api: href("docs/api/index.html"),
+  apiExplorer: href("docs/api/explorer.html"),
+  /** The OpenAPI description of one API (`sse`, `manager`, ...). */
+  openapi: (api: string) => href(`docs/api/openapi/${api}.json`),
 } as const;
 
 /** Links into the repository. */
@@ -39,5 +43,6 @@ export const links = {
 export const nav: { label: string; href: string }[] = [
   { label: "Docs", href: docs.home },
   { label: "Get started", href: docs.gettingStarted },
+  { label: "API", href: docs.api },
   { label: "GitHub", href: REPO_URL },
 ];
