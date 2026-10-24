@@ -1,0 +1,1545 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Forma runtime API: the ai-sdk-v5 client",
+    "description": "A Forma runtime serves one agent (or, multi-tenant, every deployed agent) to one kind of client, which its runtime file names (`client:`). The paths are the same for every client; what they take and return is not. This describes one client.\n\n**`client: ai-sdk-v5`**: the protocol of [Vercel's AI SDK](https://ai-sdk.dev/) (v5), for front-ends built with it. The SDK sends only the last message, and Forma keeps the conversation.\n\nRequests come from your back-end, which authenticates the user and says who they are (`X-User-ID`): Forma checks the API key, not the user.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "0.2.1"
+  },
+  "paths": {
+    "/v1/chat": {
+      "post": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Sends a message, and streams what the agent does, in the AI SDK's\nprotocol.",
+        "description": "Meant for the AI SDK's `useChat`, with a transport that sends only the\nlast message (Forma keeps the conversation; the SDK's default is to\nsend all of it). The message is a `UIMessage`: an `id`, a `role`\n(`user`), and its `parts`. The answer is the SDK's UI message stream:\n`start`, text and reasoning parts, tool calls, files, Forma's own\n`data-*` parts, `finish`, and a last line with what the job consumed.\n\nA call that needs an answer is announced as a `tool-input-available`\nthat gets no output: answer it with `/v1/resume`. How the\nconversation goes on otherwise is as with the `sync` client.",
+        "operationId": "chat",
+        "parameters": [
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user who writes. Forma does not check it: your back-end\nauthenticates the user, and sends their id. It must be the user who\nstarted the conversation.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "description": "The conversation, as `/v1/init` returned it. Required when the server\nkeeps conversations (any `storage` but `none`); otherwise every\nmessage is a conversation of its own.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "X-User-Roles",
+            "in": "header",
+            "description": "The user's roles, comma-separated (`admin, editor`): which tools the\nagent may call for them (a tool's `just_for`). Not checked either:\nyour back-end sends what it knows.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "X-Time-Zone",
+            "in": "header",
+            "description": "The user's time zone, as an IANA name (`America/Santiago`): what the\n`current-date` tool answers in, before the agent's own `timezone`. A\nname that is not a time zone is ignored.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "X-Deployment-ID",
+            "in": "header",
+            "description": "Multi-tenant servers only: which deployment (agent) to talk to, as the\nmanager returned it when deploying it. Set by your reverse proxy, from\nwhat it authenticated: never from what the client sent.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The user's message, as the AI SDK sends it: `role` must be `user`, and `parts` cannot be empty. Attachments travel inline, and the body can be 2 MB at most.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiSdkV5Message"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A stream of Server-Sent Events: the AI SDK's UI message stream. Each `data:` line holds one JSON object: an event (with a `type`), or, last, the job's usage (without one).",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSdkV5Line"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a user message with parts (a JSON `{\"error\": ...}`), or a header is missing (plain text)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageRejection"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-API-Key`",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The `X-API-Key` is wrong, or the conversation belongs to another user",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no such conversation (or, multi-tenant, deployment)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The agent is still answering the conversation's previous message: wait, and send it again",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is larger than 2 MB (attachments included)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The server has no `FORMA_AGENT_KEY`, or its storage failed",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/init": {
+      "get": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Starts a conversation.",
+        "description": "Creates a conversation for the user, and returns its id: send it as\n`X-Session-ID` with every message of it. A conversation never ends:\nstart a new one whenever the user wants a fresh start. In a server\nthat keeps no conversations (`storage: none`), it returns a\nplaceholder, and stores nothing.",
+        "operationId": "init",
+        "parameters": [
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user the conversation is for. Forma does not check it: your\nback-end authenticates the user, and sends their id. Only the user who\nstarted a conversation can write in it. Required when the server keeps\nconversations (any `storage` but `none`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "X-Deployment-ID",
+            "in": "header",
+            "description": "Multi-tenant servers only: which deployment (agent) to talk to, as the\nmanager returned it when deploying it. Set by your reverse proxy, from\nwhat it authenticated: never from what the client sent.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversation started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewSessionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A header is missing (`X-User-ID`; `X-Deployment-ID` in a multi-tenant server)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-API-Key`",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The `X-API-Key` is wrong",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Multi-tenant servers: there is no such deployment",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The server has no `FORMA_AGENT_KEY`, or its storage failed",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/resume": {
+      "post": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Answers the tool call a conversation waits on, and waits for the\nagent's answer.",
+        "description": "The request is as with the `sync` client, and so is the answer (one\nJSON object, not a stream), but its message is in the AI SDK's shape.\nIt does not stream because the AI SDK's handling of human in the loop\ndoes not work with a resumed stream.",
+        "operationId": "resume",
+        "parameters": [
+          {
+            "name": "X-User-ID",
+            "in": "header",
+            "description": "The user who writes. Forma does not check it: your back-end\nauthenticates the user, and sends their id. It must be the user who\nstarted the conversation.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "description": "The conversation, as `/v1/init` returned it. Required when the server\nkeeps conversations (any `storage` but `none`); otherwise every\nmessage is a conversation of its own.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "X-User-Roles",
+            "in": "header",
+            "description": "The user's roles, comma-separated (`admin, editor`): which tools the\nagent may call for them (a tool's `just_for`). Not checked either:\nyour back-end sends what it knows.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "X-Time-Zone",
+            "in": "header",
+            "description": "The user's time zone, as an IANA name (`America/Santiago`): what the\n`current-date` tool answers in, before the agent's own `timezone`. A\nname that is not a time zone is ignored.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "X-Deployment-ID",
+            "in": "header",
+            "description": "Multi-tenant servers only: which deployment (agent) to talk to, as the\nmanager returned it when deploying it. Set by your reverse proxy, from\nwhat it authenticated: never from what the client sent.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The agent answered (`completed`), stopped at another call (`suspended`), or waits for the turn's other calls (`still_suspended`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The call is not waiting for an answer (it does not exist, was answered, or a new message rejected it); the body is not valid JSON, or has both or neither of `arguments` and `result`; a header is missing; or the server keeps no conversations",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-API-Key`",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The `X-API-Key` is wrong, or the conversation belongs to another user",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no such conversation (or, multi-tenant, deployment)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The agent is still working on the conversation",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body is not a resume request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The agent failed",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AiSdkV5Event": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The stream was aborted.",
+            "required": [
+              "reason",
+              "type"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "description": "Why."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "abort"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The agent failed; the stream ends here.",
+            "required": [
+              "errorText",
+              "type"
+            ],
+            "properties": {
+              "errorText": {
+                "type": "string",
+                "description": "What went wrong."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The agent started working on the message. Always the first event.",
+            "required": [
+              "messageId",
+              "type"
+            ],
+            "properties": {
+              "messageId": {
+                "type": "string",
+                "description": "The id of the job, which the usage report at the end repeats."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "start"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A text part begins.",
+            "required": [
+              "id",
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The id shared by the part's `text-delta`s and `text-end`."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text-start"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "More text for the part `id` began.",
+            "required": [
+              "id",
+              "delta",
+              "type"
+            ],
+            "properties": {
+              "delta": {
+                "type": "string",
+                "description": "The text, to append to what came before."
+              },
+              "id": {
+                "type": "string",
+                "description": "The part this text belongs to."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text-delta"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The text part `id` is complete.",
+            "required": [
+              "id",
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The part that ended."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text-end"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A reasoning part begins (models that expose their reasoning).",
+            "required": [
+              "id",
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The id shared by the part's deltas and end."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "reasoning-start"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "More reasoning for the part `id`.",
+            "required": [
+              "id",
+              "delta",
+              "type"
+            ],
+            "properties": {
+              "delta": {
+                "type": "string",
+                "description": "The reasoning, to append to what came before."
+              },
+              "id": {
+                "type": "string",
+                "description": "The part this reasoning belongs to."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "reasoning-delta"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The reasoning part `id` is complete.",
+            "required": [
+              "id",
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The part that ended."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "reasoning-end"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The agent is about to call a tool.",
+            "required": [
+              "toolCallId",
+              "toolName",
+              "type"
+            ],
+            "properties": {
+              "toolCallId": {
+                "type": "string",
+                "description": "The call's id, which its input and output repeat."
+              },
+              "toolName": {
+                "type": "string",
+                "description": "The tool's name, as the agent defines it."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tool-input-start"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The arguments of a tool call. Also how a call that waits for an answer\n(an approval, or a delegated tool's result) is announced: the stream\nthen ends without its output, and the call is answered with\n`/v1/resume`.",
+            "required": [
+              "toolCallId",
+              "toolName",
+              "input",
+              "type"
+            ],
+            "properties": {
+              "input": {
+                "description": "The arguments, as the model wrote them."
+              },
+              "toolCallId": {
+                "type": "string",
+                "description": "The call's id."
+              },
+              "toolName": {
+                "type": "string",
+                "description": "The tool's name."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tool-input-available"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "What a tool call returned.",
+            "required": [
+              "toolCallId",
+              "output",
+              "type"
+            ],
+            "properties": {
+              "output": {
+                "description": "The tool's result."
+              },
+              "toolCallId": {
+                "type": "string",
+                "description": "The call's id."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tool-output-available"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The job is done, and its turn stored: the next message can be sent.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "finish"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A file produced during the turn: an image a tool generated, a file it\nfetched, or media the model returned. The AI SDK's own file part.",
+            "required": [
+              "url",
+              "mediaType",
+              "type"
+            ],
+            "properties": {
+              "mediaType": {
+                "type": "string",
+                "description": "What the file is (`image/png`, …)."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "file"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "description": "A `data:` URL, or a URL the client can reach."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Answer to a `/v1/resume`: other calls of the same turn are still\nwaiting for an answer.",
+            "required": [
+              "data",
+              "type"
+            ],
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/EmptyData",
+                "description": "Always empty."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "data-still-suspended"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "How well the answer is grounded in the sources it used.",
+            "required": [
+              "data",
+              "type"
+            ],
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/GroundingScoreData",
+                "description": "The score."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "data-grounding-score"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A document used as a source for the answer.",
+            "required": [
+              "data",
+              "type"
+            ],
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/ReferenceData",
+                "description": "The document."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "data-reference"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "One event of the stream the `ai-sdk-v5` client sends, in the protocol of\nVercel's AI SDK (v5): each is the JSON of one `data:` line.\n\n`type` says what happened. Text, reasoning and tool calls follow the AI\nSDK's own UI message stream parts; what only Forma reports travels as the\nSDK's custom `data-*` parts."
+      },
+      "AiSdkV5FilePart": {
+        "type": "object",
+        "description": "The AI SDK's file part: a picture or a document, by URL.",
+        "required": [
+          "type",
+          "mediaType",
+          "url"
+        ],
+        "properties": {
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The file's name."
+          },
+          "mediaType": {
+            "type": "string",
+            "description": "What the file is (`image/png`, `application/pdf`, ...)."
+          },
+          "type": {
+            "$ref": "#/components/schemas/FileTag",
+            "description": "Always `file`."
+          },
+          "url": {
+            "type": "string",
+            "description": "A `data:` URL; or, for a picture, a URL the model's provider can\nreach. Other files must be inline: Forma does not fetch them."
+          }
+        }
+      },
+      "AiSdkV5Line": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AiSdkV5Event",
+            "description": "Something that happened."
+          },
+          {
+            "$ref": "#/components/schemas/UsageTally",
+            "description": "What the job consumed. The last line of a stream that was not cut\nshort by an error."
+          }
+        ],
+        "description": "One `data:` line of the `ai-sdk-v5` client's stream: an event of the AI\nSDK's UI message stream, and, last, what the job consumed."
+      },
+      "AiSdkV5Message": {
+        "type": "object",
+        "description": "A message, as Vercel's AI SDK (v5) sends it (a `UIMessage`): an id, who\nwrote it, and its parts.",
+        "required": [
+          "parts",
+          "role",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The message's id. Required, and not kept."
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiSdkV5Part"
+            },
+            "description": "What it says: the AI SDK's `text` and `file` parts, or OpenAI's\n(`image_url`, `input_audio`, `file`)."
+          },
+          "role": {
+            "$ref": "#/components/schemas/OpenAIRole",
+            "description": "Who wrote it: `user`, for what is sent to the agent."
+          }
+        }
+      },
+      "AiSdkV5Part": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AiSdkV5FilePart",
+            "description": "The AI SDK's own file part, which is how `useChat` sends attachments,\nand how Forma sends files back."
+          },
+          {
+            "$ref": "#/components/schemas/OpenAIMessagePart",
+            "description": "One of OpenAI's parts. The AI SDK's `text` part is the same as\nOpenAI's."
+          }
+        ],
+        "description": "One part of an AI SDK message."
+      },
+      "UsageTally": {
+        "type": "object",
+        "description": "Groups [`SSEvent::Usage`] events by `(provider, server_address, model)`, lists the kind of\nevery tool called ([`SSEvent::ToolInputAvailable`]), and sums\n[`SSEvent::ToolUsage`] by kind and unit.",
+        "required": [
+          "tokens",
+          "tools",
+          "job_id"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Contains the unique JobID"
+          },
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelUsage"
+            },
+            "description": "What each provider and model consumed, one entry per pair.\n\nInsertion-ordered so a run's first model leads the report, which makes\nlogs and fixtures stable to read."
+          },
+          "tool_usage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolUsage"
+            },
+            "description": "What tools consumed in units of their own (absent when nothing)."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The kind of every tool called, once per call."
+          }
+        }
+      },
+      "AudioFormat": {
+        "type": "string",
+        "description": "Specifies the output audio format. Must be one of wav, mp3, flac, opus, or pcm16.",
+        "enum": [
+          "wav",
+          "mp3",
+          "flac",
+          "opus",
+          "pcm16"
+        ]
+      },
+      "EmptyData": {
+        "type": "object",
+        "description": "The `data` of an event that carries nothing."
+      },
+      "FileTag": {
+        "type": "string",
+        "description": "The tag of the AI SDK's file part.",
+        "enum": [
+          "file"
+        ]
+      },
+      "GroundingScoreData": {
+        "type": "object",
+        "description": "The `data` of a `data-grounding-score` event.",
+        "required": [
+          "score"
+        ],
+        "properties": {
+          "score": {
+            "type": "number",
+            "format": "double",
+            "description": "How well the answer is supported by its sources."
+          }
+        }
+      },
+      "MessageRejection": {
+        "type": "object",
+        "description": "A request Forma refused before reading it as a message: its body is not\nJSON, is not a message, has no content, or is not the user's.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Why."
+          }
+        }
+      },
+      "ModelUsage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TokenUsage"
+          },
+          {
+            "type": "object",
+            "required": [
+              "provider",
+              "model",
+              "calls"
+            ],
+            "properties": {
+              "calls": {
+                "type": "integer",
+                "description": "Provider round trips, which some plans bill per-request on top of tokens.",
+                "minimum": 0
+              },
+              "model": {
+                "type": "string",
+                "description": "The model the provider reports having served."
+              },
+              "provider": {
+                "type": "string",
+                "description": "The backend that served the calls, by its OpenTelemetry GenAI name\n(`ollama`, `openai`, `groq`, `gcp.vertex_ai`)."
+              },
+              "server_address": {
+                "type": "string",
+                "description": "The host the calls went to (OpenTelemetry's `server.address`): with\n`provider`, who served them, and so who bills them. Every\nOpenAI-compatible server speaks `openai`; the host tells them apart."
+              }
+            }
+          }
+        ],
+        "description": "What one `(provider, server_address, model)` consumed across a whole run.\n\nProvider is half the key, not decoration: the same model name reached\nthrough two backends is two different prices, and through a local Ollama it\nis free."
+      },
+      "NewSessionResult": {
+        "type": "object",
+        "description": "A conversation that `/v1/init` started.",
+        "required": [
+          "session_id"
+        ],
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "The conversation's id: send it as `X-Session-ID` with every message\nof it. A server that keeps no conversations (`storage: none`) returns\na placeholder, which it ignores."
+          }
+        }
+      },
+      "OpenAIAudioPart": {
+        "type": "object",
+        "description": "A recording.",
+        "required": [
+          "input_audio"
+        ],
+        "properties": {
+          "input_audio": {
+            "$ref": "#/components/schemas/OpenAIInputAudio",
+            "description": "The recording."
+          }
+        }
+      },
+      "OpenAIFile": {
+        "type": "object",
+        "description": "A file: a document, or audio in any container.",
+        "properties": {
+          "file_data": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The base64 encoded file data, used when passing the file to the model as a string."
+          },
+          "file_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The ID of an uploaded file to use as input."
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of the file, used when passing the file to the model as a string."
+          }
+        }
+      },
+      "OpenAIFilePart": {
+        "type": "object",
+        "description": "A file.",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/OpenAIFile",
+            "description": "The file."
+          }
+        }
+      },
+      "OpenAIImagePart": {
+        "type": "object",
+        "description": "An image.",
+        "required": [
+          "image_url"
+        ],
+        "properties": {
+          "image_url": {
+            "$ref": "#/components/schemas/OpenAIImageUrl",
+            "description": "Where it is."
+          }
+        }
+      },
+      "OpenAIImageUrl": {
+        "type": "object",
+        "description": "Where an image is.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "detail": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIVisionDetail",
+                "description": "How closely the model should look at it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "A `data:` URL (`data:image/png;base64,...`), or a URL the model's\nprovider can reach."
+          }
+        }
+      },
+      "OpenAIInputAudio": {
+        "type": "object",
+        "description": "A recording, inline.",
+        "required": [
+          "data",
+          "format"
+        ],
+        "properties": {
+          "data": {
+            "type": "string",
+            "description": "Base64 encoded audio data."
+          },
+          "format": {
+            "$ref": "#/components/schemas/AudioFormat",
+            "description": "The format of the encoded audio data. Currently supports \"wav\" and \"mp3\"."
+          }
+        }
+      },
+      "OpenAIMessagePart": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAITextPart",
+                "description": "Text."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Text."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIImagePart",
+                "description": "An image."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image_url"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "An image."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIAudioPart",
+                "description": "A recording, base64 with its format named."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "input_audio"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A recording, base64 with its format named."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIFilePart",
+                "description": "A file, base64 in a `data:` URL."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A file, base64 in a `data:` URL."
+          }
+        ],
+        "description": "One piece of a message's content, its `type` saying what it is."
+      },
+      "OpenAIRole": {
+        "type": "string",
+        "description": "Who wrote a message.",
+        "enum": [
+          "assistant",
+          "user",
+          "developer",
+          "system",
+          "tool"
+        ]
+      },
+      "OpenAITextPart": {
+        "type": "object",
+        "description": "Text.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text."
+          }
+        }
+      },
+      "OpenAIVisionDetail": {
+        "type": "string",
+        "description": "Tells the model what level of detail to use when processing and understanding the image",
+        "enum": [
+          "low",
+          "auto",
+          "high"
+        ]
+      },
+      "ReferenceData": {
+        "type": "object",
+        "description": "The `data` of a `data-reference` event.",
+        "required": [
+          "title",
+          "url"
+        ],
+        "properties": {
+          "extractiveAnswer": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Passages that answer the question directly, if the source gave any."
+          },
+          "snippet": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The passage that was used, if known."
+          },
+          "title": {
+            "type": "string",
+            "description": "The document's title."
+          },
+          "url": {
+            "type": "string",
+            "description": "Where the document is."
+          }
+        }
+      },
+      "ResumeRequest": {
+        "type": "object",
+        "description": "The request body for the resume endpoints.",
+        "required": [
+          "tool_call_id",
+          "reject"
+        ],
+        "properties": {
+          "arguments": {
+            "description": "Arguments to pass to the tool (required when `reject` is false)."
+          },
+          "reject": {
+            "type": "boolean",
+            "description": "If `true`, the call is rejected: the tool does not run, and the model\nis told the user rejected it."
+          },
+          "result": {
+            "description": "The result of the tool call (required when `reject` is false)."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "ID of the pending tool call this feedback applies to."
+          }
+        }
+      },
+      "TokenUsage": {
+        "type": "object",
+        "description": "What one LLM call consumed, in the shape a bill needs.\n\nThis is a *normalisation* of [`OpenAIUsage`], not a copy of it. Providers\ndisagree about what their totals include, and the disagreement shows up as\na wrong invoice rather than a parse error, so the convention is pinned here,\nonce, at the only layer that still knows which provider produced the numbers:\n\n- `input_tokens` counts every prompt token, `cached_input_tokens` included.\n- `output_tokens` counts every generated token, `reasoning_tokens` included.\n\n`cached_input_tokens` and `reasoning_tokens` are therefore *subsets* of their\nparents, carried separately because they are priced differently — cached\ninput is discounted, reasoning is billed at the output rate. Adding either to\nits parent double-charges.",
+        "required": [
+          "input_tokens",
+          "cached_input_tokens",
+          "output_tokens",
+          "reasoning_tokens",
+          "input_audio_tokens",
+          "output_audio_tokens"
+        ],
+        "properties": {
+          "cached_input_tokens": {
+            "type": "integer",
+            "description": "The subset of `input_tokens` the provider served from its prompt cache.\nBilled at a discount, so ignoring it over-charges.",
+            "minimum": 0
+          },
+          "input_audio_tokens": {
+            "type": "integer",
+            "description": "Audio tokens in the prompt, a subset of `input_tokens`. Priced far above\ntext tokens by every provider that supports them.",
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "description": "Prompt tokens, cached ones included.",
+            "minimum": 0
+          },
+          "output_audio_tokens": {
+            "type": "integer",
+            "description": "Audio tokens generated, a subset of `output_tokens`.",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Generated tokens, reasoning included.",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "type": "integer",
+            "description": "The subset of `output_tokens` spent on reasoning the client never sees.\nBilled like any other output token.",
+            "minimum": 0
+          }
+        }
+      },
+      "ToolUsage": {
+        "type": "object",
+        "description": "What a tool consumed beyond being called, in a unit it is priced by: the\nseconds a code-execution sandbox ran, for instance. Summed per\n`(tool_kind, unit)` across a run.",
+        "required": [
+          "tool_kind",
+          "unit",
+          "quantity"
+        ],
+        "properties": {
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many `unit`s, over the whole job.",
+            "minimum": 0
+          },
+          "tool_kind": {
+            "type": "string",
+            "description": "The tool's kind (`code-execution`, …)."
+          },
+          "unit": {
+            "type": "string",
+            "description": "What `quantity` counts (`second`, …)."
+          }
+        }
+      },
+      "ResumeAnswer": {
+        "allOf": [
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "Every call was answered, and the agent answered: `data` is its\nmessage.",
+                "required": [
+                  "data",
+                  "status"
+                ],
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "description": "A message, as Vercel's AI SDK (v5) sends it (a `UIMessage`): an id, who\nwrote it, and its parts.",
+                    "required": [
+                      "parts",
+                      "role",
+                      "id"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "The message's id. Required, and not kept."
+                      },
+                      "parts": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/AiSdkV5Part"
+                        },
+                        "description": "What it says: the AI SDK's `text` and `file` parts, or OpenAI's\n(`image_url`, `input_audio`, `file`)."
+                      },
+                      "role": {
+                        "$ref": "#/components/schemas/OpenAIRole",
+                        "description": "Who wrote it: `user`, for what is sent to the agent."
+                      }
+                    }
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "completed"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "The agent went on, and stopped at another call that needs an answer.",
+                "required": [
+                  "data",
+                  "status"
+                ],
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "description": "The agent went on, and stopped at another call that needs an answer.",
+                    "required": [
+                      "session_id",
+                      "tool_call_id",
+                      "tool_name",
+                      "arguments"
+                    ],
+                    "properties": {
+                      "arguments": {
+                        "description": "The arguments the agent proposed."
+                      },
+                      "session_id": {
+                        "type": "string",
+                        "description": "The conversation that is waiting."
+                      },
+                      "tool_call_id": {
+                        "type": "string",
+                        "description": "The id of the call waiting for an answer: what `/v1/resume`\nanswers."
+                      },
+                      "tool_name": {
+                        "type": "string",
+                        "description": "The tool the agent wants to call."
+                      }
+                    }
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "suspended"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Other calls of the same turn are still waiting for an answer: the\nagent goes on once all are answered.",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "still_suspended"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Result from a Resume, indicating whether the\nrequest was completed, whether the resumed run stopped at a new call\nthat needs an answer, or whether the session is still\nsuspended (other calls are waiting for an answer).\n\nA rejected call is completed like any other: the rejection becomes the\ncall's result, and the agent answers with it."
+          },
+          {
+            "type": "object",
+            "required": [
+              "usage"
+            ],
+            "properties": {
+              "usage": {
+                "$ref": "#/components/schemas/UsageTally",
+                "description": "What the job consumed: tokens per provider and model, and the tools\nit called. Empty when nothing ran (`still_suspended`)."
+              }
+            }
+          }
+        ],
+        "description": "A JSON answer: its `status` and `data`, and what producing it consumed."
+      }
+    },
+    "securitySchemes": {
+      "api_key": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "The server's `FORMA_AGENT_KEY`. Not required when the runtime file says `no_api_key: true`. It identifies your back-end, not the user: keep it out of browsers and apps, and put a back-end of your own in front of the agent."
+      }
+    }
+  },
+  "security": [
+    {
+      "api_key": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Conversations",
+      "description": "Start a conversation, write in it, and answer the tool calls it waits on."
+    }
+  ],
+  "externalDocs": {
+    "url": "https://germolinal.github.io/forma/docs/api/runtime.html",
+    "description": "The runtime's API, explained"
+  }
+}

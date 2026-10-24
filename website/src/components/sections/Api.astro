@@ -1,0 +1,64 @@
+---
+import Button from "../ui/Button.astro";
+import { docs } from "../../config/site";
+
+// One description per API: a runtime's paths are the same for every
+// client, but not what they take and return.
+const apis = [
+  [
+    "sse",
+    "Runtime, streaming",
+    "Server-Sent Events: what the agent does, as it does it",
+  ],
+  [
+    "sync",
+    "Runtime, request and response",
+    "One JSON answer, once the agent is done",
+  ],
+  ["ai-sdk-v5", "Runtime, AI SDK v5", "The stream Vercel's AI SDK reads"],
+  ["whatsapp", "Runtime, WhatsApp", "The webhook Meta calls"],
+  ["telegram", "Runtime, Telegram", "The webhook Telegram calls"],
+  [
+    "manager",
+    "Manager",
+    "Deploy agents, keep users' tokens, read conversations",
+  ],
+];
+---
+
+<section class="shell section border-t">
+  <div class="max-w-2xl">
+    <h2 class="text-3xl font-semibold sm:text-4xl">Build on it</h2>
+    <p class="text-muted-foreground mt-4">
+      Everything Forma serves is plain HTTP, described in OpenAPI 3.1 and
+      generated from its code: hand a description to a code generator, or to a
+      coding agent, and build your front end, your back end, or your own
+      platform around it.
+    </p>
+  </div>
+  <ul class="mt-10 border-t">
+    {
+      apis.map(([api, name, description]) => (
+        <li class="flex flex-col gap-0.5 border-b py-4 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+          <a
+            href={docs.openapi(api)}
+            class="font-display font-semibold underline-offset-4 hover:underline"
+          >
+            {name}
+          </a>
+          <span class="text-muted-foreground">{description}</span>
+        </li>
+      ))
+    }
+  </ul>
+  <pre
+    class="bg-panel text-panel-foreground mt-8 max-w-2xl overflow-x-auto rounded-xl p-6 font-mono text-sm leading-7"><code>forma openapi sse -o forma-sse.json</code></pre>
+  <div class="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+    <Button href={docs.apiExplorer} variant="link" class="px-0">
+      Explore the APIs →
+    </Button>
+    <Button href={docs.api} variant="link" class="px-0">
+      Read how they fit together →
+    </Button>
+  </div>
+</section>

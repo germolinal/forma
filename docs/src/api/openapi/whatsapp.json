@@ -1,0 +1,348 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Forma runtime API: the whatsapp client",
+    "description": "A Forma runtime serves one agent (or, multi-tenant, every deployed agent) to one kind of client, which its runtime file names (`client:`). The paths are the same for every client; what they take and return is not. This describes one client.\n\n**`client: whatsapp`**: the agent as the webhook of a WhatsApp Cloud API app. Meta calls it, and the agent answers over WhatsApp: nothing of yours calls it. It always keeps conversations, and needs no API key: every delivery is signed by Meta.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "0.2.1"
+  },
+  "paths": {
+    "/v1/chat": {
+      "get": {
+        "tags": [
+          "Webhook"
+        ],
+        "summary": "Verifies the webhook (Meta calls it).",
+        "description": "Meta calls it when the webhook's URL or verify token is set in the\nApp Dashboard. If the token is the server's, the server answers with\nthe challenge, and Meta starts delivering messages.",
+        "operationId": "verify",
+        "parameters": [
+          {
+            "name": "hub.mode",
+            "in": "query",
+            "description": "Always `subscribe`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hub.challenge",
+            "in": "query",
+            "description": "What to answer with.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hub.verify_token",
+            "in": "query",
+            "description": "The verify token chosen in Meta's App Dashboard: the server's\n`WHATSAPP_VERIFY_TOKEN` (or the deployment's `verify_token`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Deployment-ID",
+            "in": "header",
+            "description": "Multi-tenant servers only: the deployment the webhook is for. Your reverse proxy adds it, from the URL it gave Meta for that deployment.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The challenge, as it was sent",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`hub.mode` is not `subscribe`, a query parameter is missing, or the server has no WhatsApp credentials",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The verify token is not the server's",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Webhook"
+        ],
+        "summary": "Receives what WhatsApp delivers (Meta calls it).",
+        "description": "Every delivery must be signed by Meta with the App secret\n(`X-Hub-Signature-256`), or it is refused. Messages (text, pictures,\nvoice notes, documents) are answered over WhatsApp: each sender has\none conversation with the agent, whose id is their phone number.\nReactions are stored on the message they react to; statuses are\nacknowledged. A message Meta delivers again is answered once, and one\nthat arrives while the agent still answers the sender waits its turn.\n\nCalls that need an approval are asked with two buttons; delegated\ntools are answered at once, with an error (there is no client to run\nthem). The answer to Meta is what the deliveries' jobs consumed.",
+        "operationId": "webhook",
+        "parameters": [
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "description": "`sha256=` and the HMAC-SHA256 of the body, with the App secret (`WHATSAPP_APP_SECRET`, or the deployment's `app_secret`). Meta adds it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Deployment-ID",
+            "in": "header",
+            "description": "Multi-tenant servers only: the deployment the webhook is for. Your reverse proxy adds it, from the URL it gave Meta for that deployment, and passes the body and Meta's headers on unchanged.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "A [WhatsApp Cloud API webhook payload](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview/), as Meta sends it.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The delivery was handled (or ignored: another number's, or a kind the agent does not handle). What answering it consumed, one entry per job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UsageTally"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a WhatsApp delivery, or the server has no WhatsApp credentials",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The signature is missing, malformed, or wrong",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The agent was still answering the sender's previous message after a while: Meta delivers it again later",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The message could not be stored or answered, and delivering it again may help",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ModelUsage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TokenUsage"
+          },
+          {
+            "type": "object",
+            "required": [
+              "provider",
+              "model",
+              "calls"
+            ],
+            "properties": {
+              "calls": {
+                "type": "integer",
+                "description": "Provider round trips, which some plans bill per-request on top of tokens.",
+                "minimum": 0
+              },
+              "model": {
+                "type": "string",
+                "description": "The model the provider reports having served."
+              },
+              "provider": {
+                "type": "string",
+                "description": "The backend that served the calls, by its OpenTelemetry GenAI name\n(`ollama`, `openai`, `groq`, `gcp.vertex_ai`)."
+              },
+              "server_address": {
+                "type": "string",
+                "description": "The host the calls went to (OpenTelemetry's `server.address`): with\n`provider`, who served them, and so who bills them. Every\nOpenAI-compatible server speaks `openai`; the host tells them apart."
+              }
+            }
+          }
+        ],
+        "description": "What one `(provider, server_address, model)` consumed across a whole run.\n\nProvider is half the key, not decoration: the same model name reached\nthrough two backends is two different prices, and through a local Ollama it\nis free."
+      },
+      "TokenUsage": {
+        "type": "object",
+        "description": "What one LLM call consumed, in the shape a bill needs.\n\nThis is a *normalisation* of [`OpenAIUsage`], not a copy of it. Providers\ndisagree about what their totals include, and the disagreement shows up as\na wrong invoice rather than a parse error, so the convention is pinned here,\nonce, at the only layer that still knows which provider produced the numbers:\n\n- `input_tokens` counts every prompt token, `cached_input_tokens` included.\n- `output_tokens` counts every generated token, `reasoning_tokens` included.\n\n`cached_input_tokens` and `reasoning_tokens` are therefore *subsets* of their\nparents, carried separately because they are priced differently — cached\ninput is discounted, reasoning is billed at the output rate. Adding either to\nits parent double-charges.",
+        "required": [
+          "input_tokens",
+          "cached_input_tokens",
+          "output_tokens",
+          "reasoning_tokens",
+          "input_audio_tokens",
+          "output_audio_tokens"
+        ],
+        "properties": {
+          "cached_input_tokens": {
+            "type": "integer",
+            "description": "The subset of `input_tokens` the provider served from its prompt cache.\nBilled at a discount, so ignoring it over-charges.",
+            "minimum": 0
+          },
+          "input_audio_tokens": {
+            "type": "integer",
+            "description": "Audio tokens in the prompt, a subset of `input_tokens`. Priced far above\ntext tokens by every provider that supports them.",
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "description": "Prompt tokens, cached ones included.",
+            "minimum": 0
+          },
+          "output_audio_tokens": {
+            "type": "integer",
+            "description": "Audio tokens generated, a subset of `output_tokens`.",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Generated tokens, reasoning included.",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "type": "integer",
+            "description": "The subset of `output_tokens` spent on reasoning the client never sees.\nBilled like any other output token.",
+            "minimum": 0
+          }
+        }
+      },
+      "ToolUsage": {
+        "type": "object",
+        "description": "What a tool consumed beyond being called, in a unit it is priced by: the\nseconds a code-execution sandbox ran, for instance. Summed per\n`(tool_kind, unit)` across a run.",
+        "required": [
+          "tool_kind",
+          "unit",
+          "quantity"
+        ],
+        "properties": {
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many `unit`s, over the whole job.",
+            "minimum": 0
+          },
+          "tool_kind": {
+            "type": "string",
+            "description": "The tool's kind (`code-execution`, …)."
+          },
+          "unit": {
+            "type": "string",
+            "description": "What `quantity` counts (`second`, …)."
+          }
+        }
+      },
+      "UsageTally": {
+        "type": "object",
+        "description": "Groups [`SSEvent::Usage`] events by `(provider, server_address, model)`, lists the kind of\nevery tool called ([`SSEvent::ToolInputAvailable`]), and sums\n[`SSEvent::ToolUsage`] by kind and unit.",
+        "required": [
+          "tokens",
+          "tools",
+          "job_id"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Contains the unique JobID"
+          },
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelUsage"
+            },
+            "description": "What each provider and model consumed, one entry per pair.\n\nInsertion-ordered so a run's first model leads the report, which makes\nlogs and fixtures stable to read."
+          },
+          "tool_usage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolUsage"
+            },
+            "description": "What tools consumed in units of their own (absent when nothing)."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The kind of every tool called, once per call."
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Webhook",
+      "description": "What the chat app calls."
+    }
+  ],
+  "externalDocs": {
+    "url": "https://germolinal.github.io/forma/docs/how-to/whatsapp.html",
+    "description": "Your agent on WhatsApp"
+  }
+}
