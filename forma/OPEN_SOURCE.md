@@ -40,6 +40,11 @@ file tracks the goals and what is left; how things were set up, and why, is in
   containers), the six builds, the docs; `cargo deny` and `cargo audit`.
 - **The docs' reference pages** are generated in CI (`website/build.sh` runs
   `make docs` before `mdbook build`).
+- **The HTTP APIs, described** (2026-10-23): OpenAPI 3.1 descriptions of the
+  runtime (one per client) and the manager, generated from the code
+  (`forma openapi <api>`, and `make docs` for the site, with an explorer);
+  and their reference in `docs/src/api/` (the runtime's API, multi-tenant
+  platforms, the manager's API). How: `OPEN_SOURCE_DECISIONS.md`.
 
 ## Left to do
 
@@ -87,31 +92,18 @@ Covered today: single-tenant deployment (binary and container), the cloud
 walk-through (Cloud Run), the HTTP API, WhatsApp and Telegram, evaluations,
 observability, human in the loop.
 
-- [ ] **Running a multi-tenant platform**, Clonsult's architecture without
-      Clonsult: the manager, the runtimes, the database they share, and the
-      reverse proxy in front, which is the part people have to build
-      themselves. Its contract has to be written down exactly:
-      - which headers the runtime trusts (`X-Deployment-ID`, `X-User-ID`,
-        `X-User-Roles`, `X-Time-Zone`): the proxy must set them from what it
-        authenticated, and strip whatever the client sent;
-      - webhooks: one URL per deployment on the proxy, forwarded to
-        `/v1/chat` with the deployment's id, the body unchanged and the
-        platform's signature headers kept;
-      - per-deployment credentials (`whatsapp_api`, `telegram_api`,
-        `workspaces`), and `FORMA_ENCRYPTION_KEY`, shared by manager and
-        runtimes;
-      - who registers webhooks (Clonsult's backend calls Telegram's
-        `setWebhook` at deploy time);
-      - usage reporting for billing (the tallies at the end of a stream, or in
-        a webhook's response body).
-      Clonsult's `back/` is the reference implementation; a minimal proxy
-      example (a few hundred lines, any language) would be worth more than
-      prose.
-- [ ] **The manager's API**, complete (`deployment.md` has a table, without the
-      bodies).
+- [x] **Running a multi-tenant platform**: the proxy's contract (trusted
+      headers, webhooks, credentials, `FORMA_ENCRYPTION_KEY`, usage) is in
+      `docs/src/api/multi-tenant.md` (2026-10-23).
+- [ ] A minimal proxy example (a few hundred lines, any language), which
+      would be worth more than the prose. Clonsult's `back/` is the reference
+      implementation.
+- [x] **The manager's API**, complete: `docs/src/api/manager.md`, and its
+      OpenAPI description (2026-10-23).
 - [ ] **The security model** for operators: what each component trusts, what
       must never be exposed (the manager), how secrets flow, and why webhooks
-      are signed.
+      are signed. The API pages say most of it (`docs/src/api/`); a page of its
+      own would gather it.
 - [ ] **Self-hosting the workspace stores and the code-execution sandbox**:
       `workspaces` (`gcs`, `local`) and `code_execution` (`cloud-run-job`,
       `local-docker`) in `runtime.yaml`, and what each needs.
@@ -159,13 +151,17 @@ the way:
 
 ### Beyond Google Cloud
 
-- [ ] `google-knowledgebase`, `google-workspace`, `google-agent-search`,
-      `google-gen-image`, the GCS workspace store and the Cloud Run sandbox
-      are fine to ship, but a user without Google Cloud needs an alternative
-      for each that matters (S3-compatible storage, a local sandbox that
-      works: see "Local workspaces and code execution" above).
-- [ ] **The TypeScript SDK**: a `package.json`, a build, and npm, if it is meant
-      for others. Today it has none, and Clonsult's `front/` uses it by path.
+Left to the community: `google-knowledgebase`, `google-workspace`,
+`google-agent-search`, `google-gen-image`, the GCS workspace store and the
+Cloud Run sandbox ship as they are, and alternatives (S3-compatible storage,
+a local sandbox that works: see "Local workspaces and code execution" above)
+are for contributors to add.
+
+### The TypeScript SDK
+
+- [ ] A `package.json`, a build, and npm, if it is meant for others. Today it
+      has none, and Clonsult's `front/` uses it by path. Its types could now be
+      generated from the OpenAPI descriptions (`forma openapi sse`).
 
 ## Open questions
 

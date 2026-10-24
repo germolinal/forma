@@ -269,7 +269,18 @@ impl FormaDB for FileDB {
         Ok(deployment_id.to_string())
     }
 
-    async fn remove_agent_deployment(&self, deployment_id: &str) -> Result<String, FormaError> {
+    async fn remove_agent_deployment(
+        &self,
+        user_id: &str,
+        deployment_id: &str,
+    ) -> Result<String, FormaError> {
+        // As in `update_agent_deployment`: someone else's is not found.
+        let deployment = self.get_agent_deployment(deployment_id).await?;
+        if deployment.owner_id != user_id {
+            return Err(FormaError::AgentDeploymentNotFound(
+                deployment_id.to_string(),
+            ));
+        }
         let path = self.deployments_path(deployment_id);
         std::fs::remove_file(&path)
             .map_err(|_| FormaError::AgentDeploymentNotFound(deployment_id.to_string()))?;

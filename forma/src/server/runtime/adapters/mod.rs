@@ -1,6 +1,9 @@
 use agent::{CallContext, Callable};
 use chrono::Utc;
-use futures::stream::{BoxStream, Stream};
+use futures::{
+    FutureExt,
+    stream::{BoxStream, Stream},
+};
 
 use protocols::{
     FormaDB, FormaError, FormaMessage, FormaMessageBody, FormaMessagePart, FormaTextPart,
@@ -53,8 +56,13 @@ impl ClientSSE for SSEvent {
     }
 }
 
+/// A conversation that `/v1/init` started.
 #[derive(Clone, Default, Serialize, Deserialize, Debug)]
-pub(crate) struct NewSessionResult {
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct NewSessionResult {
+    /// The conversation's id: send it as `X-Session-ID` with every message
+    /// of it. A server that keeps no conversations (`storage: none`) returns
+    /// a placeholder, which it ignores.
     session_id: String,
 }
 
@@ -213,6 +221,21 @@ async fn agent_box_stream<DB: FormaDB, I: Into<FormaMessage> + Serialize, O: Cli
                 yield Ok(Event::default().data(s.as_str()));
             }
 
+        }
+
+        // The channel closed with neither `Finish` nor `Error`: the run is
+        // not over, it is gone, and what it said so far is not an answer.
+        if !finished {
+            usage.finish(RunOutcome::Errored);
+            let error = unfinished_run().to_string();
+            match O::translate(SSEvent::Error { error: error.clone() }) {
+                Some(event) => {
+                    let s = serde_json::to_string(&event).unwrap();
+                    yield Ok(Event::default().data(s.as_str()));
+                }
+                None => yield Err(FormaError::Execution(error)),
+            }
+            return;
         }
 
         usage.finish(if is_suspended { RunOutcome::Suspended } else { RunOutcome::Completed });
@@ -496,17 +519,47 @@ pub(crate) struct Metered<T> {
     pub usage: UsageTally,
 }
 
+/// A JSON answer: its `status` and `data`, and what producing it consumed.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Answer<R> {
+    /// The answer.
+    #[serde(flatten)]
+    pub result: R,
+    /// What the job consumed: tokens per provider and model, and the tools
+    /// it called. Empty when nothing ran (`still_suspended`).
+    pub usage: UsageTally,
+}
+
+impl<T> From<Metered<T>> for Answer<T> {
+    fn from(metered: Metered<T>) -> Self {
+        Self {
+            result: metered.result,
+            usage: metered.usage,
+        }
+    }
+}
+
 /// Result from a Completion, indicating whether the
 /// request was completed or has been suspended because
 /// human feedback was needed
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "status", content = "data")]
-pub(crate) enum CompletionResult<O> {
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum CompletionResult<O> {
+    /// The agent answered: `data` is its message.
     Completed(O),
+    /// The agent stopped at a tool call that needs an answer: an approval,
+    /// or a delegated tool's result. Answer it with `/v1/resume`.
     Suspended {
+        /// The conversation that is waiting.
         session_id: String,
+        /// The id of the call waiting for an answer: what `/v1/resume`
+        /// answers.
         tool_call_id: String,
+        /// The tool the agent wants to call.
         tool_name: String,
+        /// The arguments the agent proposed.
         arguments: Value,
     },
 }
@@ -520,14 +573,25 @@ pub(crate) enum CompletionResult<O> {
 /// call's result, and the agent answers with it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "status", content = "data")]
-pub(crate) enum ResumeResult<O> {
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum ResumeResult<O> {
+    /// Every call was answered, and the agent answered: `data` is its
+    /// message.
     Completed(O),
+    /// The agent went on, and stopped at another call that needs an answer.
     Suspended {
+        /// The conversation that is waiting.
         session_id: String,
+        /// The id of the call waiting for an answer: what `/v1/resume`
+        /// answers.
         tool_call_id: String,
+        /// The tool the agent wants to call.
         tool_name: String,
+        /// The arguments the agent proposed.
         arguments: Value,
     },
+    /// Other calls of the same turn are still waiting for an answer: the
+    /// agent goes on once all are answered.
     StillSuspended,
 }
 
@@ -655,9 +719,11 @@ async fn raw_completion<DB: FormaDB, I: Into<FormaMessage> + Serialize, O: From<
     let mut responses = ResponseMessages::default();
     let mut usage = UsageRecorder::new(mode.as_str());
     let mut suspended_msg: Option<CompletionResult<O>> = None;
+    let mut finished = false;
 
     let db = &args.db;
     while let Some(msg) = rx.recv().await {
+        finished |= matches!(msg, SSEvent::Finish);
         match consume_event(
             &msg,
             &mut responses,
@@ -686,6 +752,12 @@ async fn raw_completion<DB: FormaDB, I: Into<FormaMessage> + Serialize, O: From<
                 return Err(e);
             }
         }
+    }
+
+    // As in `agent_box_stream`: a run that is gone is not an empty answer.
+    if !finished {
+        usage.finish(RunOutcome::Errored);
+        return Err(unfinished_run());
     }
 
     usage.finish(if suspended_msg.is_some() {
@@ -1097,9 +1169,16 @@ async fn call_agent<DB: FormaDB>(
     let agent = &args.agent;
 
     let start = Utc::now();
+    // A panic is a bug, but it must not pass for an answer: unwound here, it
+    // reaches the client as the error it is. Left alone, it would end the
+    // task, close the channel, and the run would look finished, and empty.
+    let run = std::panic::AssertUnwindSafe(agent.run(ctx, true))
+        .catch_unwind()
+        .await
+        .unwrap_or_else(|panic| Err(FormaError::Execution(panic_message(panic.as_ref()))));
     // A send fails only when the client has gone (the stream's receiver was
     // dropped): there is nobody left to tell, so it is not an error.
-    match agent.run(ctx, true).await {
+    match run {
         Ok(_) => {
             let end = Utc::now();
             let duration = (end - start).as_seconds_f32();
@@ -1113,6 +1192,22 @@ async fn call_agent<DB: FormaDB>(
             error!("{}: {}", job_id, e);
         }
     }
+}
+
+/// What a panic said, as the error a client is told.
+fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
+    let what = panic
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| panic.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "no message".to_string());
+    format!("the agent stopped unexpectedly (a bug in Forma, please report it): {what}")
+}
+
+/// What a run that ended with neither `Finish` nor `Error` is reported as:
+/// its task went away without saying how it ended.
+fn unfinished_run() -> FormaError {
+    FormaError::Execution("the agent stopped without finishing its answer".to_string())
 }
 
 #[cfg(all(test, any(not(feature = "multi-tenant"), feature = "cli")))]

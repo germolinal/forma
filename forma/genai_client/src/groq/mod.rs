@@ -4,7 +4,6 @@ use crate::{ByteStream, OpenAIChatChunk, OpenAIChatMessage, OpenAIChatResponse};
 use crate::{JsonSchema, OpenAIChatRequest, openai::v1::OpenAITool};
 use async_trait::async_trait;
 use derive::FormaDocs;
-use reqwest::Error as ReqwestError;
 use serde::{Deserialize, Serialize};
 
 fn default_groq_endpoint() -> String {
@@ -257,14 +256,14 @@ impl GenaiClientTrait for Groq {
         allowed_tools: Option<Vec<String>>,
     ) -> Result<Self::Response, String> {
         let body = self.get_request_body(messages, allowed_tools);
-        let request = rest_request(self, &body).expect("LLM client could not build request");
+        let request = rest_request(self, &body)?;
         post::<Self::Response>(request).await
     }
     async fn stream<M: Into<Self::Message> + Send + 'static, O: From<Self::Chunk>>(
         &self,
         messages: Vec<M>,
         allowed_tools: Option<Vec<String>>,
-    ) -> Result<ByteStream<O>, ReqwestError> {
+    ) -> Result<ByteStream<O>, String> {
         let mut body = self.get_request_body(messages, allowed_tools);
         body.stream = Some(true);
         // Ask for a final usage chunk so token counts are available while streaming.
@@ -272,7 +271,7 @@ impl GenaiClientTrait for Groq {
             include_usage: Some(true),
             ..Default::default()
         });
-        let request = rest_request(self, &body).expect("LLM client could not build request");
+        let request = rest_request(self, &body)?;
         post_stream::<Self::Chunk, O>(request).await
     }
 }

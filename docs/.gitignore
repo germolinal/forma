@@ -1,3 +1,4 @@
 book
 .DS_Store
 /src/reference_docs
+/src/api/openapi

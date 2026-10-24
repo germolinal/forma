@@ -13,6 +13,7 @@ use std::{collections::HashMap, sync::OnceLock};
 /// Call [`is_expired`][OauthToken::is_expired] before use; if true, call
 /// [`refresh`][OauthToken::refresh] to obtain a new token.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OauthToken {
     /// The OAuth2 client ID used to obtain this token.
     pub client_id: String,
@@ -94,43 +95,42 @@ impl OauthToken {
     }
 }
 
-static ENCRYPTION_KEY: OnceLock<LessSafeKey> = OnceLock::new();
+/// The key credentials are encrypted with, read from `FORMA_ENCRYPTION_KEY` the
+/// first time it is needed. A key that is missing or malformed is kept as the
+/// error it is, so that every use reports it rather than bringing the server
+/// down.
+static ENCRYPTION_KEY: OnceLock<Result<LessSafeKey, String>> = OnceLock::new();
 
-fn init_encryption_key() -> &'static LessSafeKey {
+fn load_encryption_key() -> Result<LessSafeKey, String> {
     let raw = std::env::var(FORMA_ENCRYPTION_KEY_ENV)
-        .unwrap_or_else(|_| panic!("{FORMA_ENCRYPTION_KEY_ENV} must be set"));
-
+        .map_err(|_| format!("{FORMA_ENCRYPTION_KEY_ENV} must be set"))?;
     let key_bytes = B64
-        .decode(&raw)
-        .unwrap_or_else(|_| panic!("{FORMA_ENCRYPTION_KEY_ENV} must be valid base64"));
-
+        .decode(raw.trim())
+        .map_err(|_| format!("{FORMA_ENCRYPTION_KEY_ENV} must be valid base64"))?;
     let unbound = UnboundKey::new(&AES_256_GCM, &key_bytes)
-        .unwrap_or_else(|_| panic!("{FORMA_ENCRYPTION_KEY_ENV} must be 32 bytes"));
+        .map_err(|_| format!("{FORMA_ENCRYPTION_KEY_ENV} must be 32 bytes"))?;
+    Ok(LessSafeKey::new(unbound))
+}
 
+fn encryption_key() -> Result<&'static LessSafeKey, String> {
     ENCRYPTION_KEY
-        .set(LessSafeKey::new(unbound))
-        .unwrap_or_else(|_| panic!("Encryption key already initialized"));
-
-    ENCRYPTION_KEY.get().unwrap()
+        .get_or_init(load_encryption_key)
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
-fn encryption_key() -> &'static LessSafeKey {
-    match ENCRYPTION_KEY.get() {
-        Some(key) => key,
-        None => init_encryption_key(),
-    }
-}
-
-fn encrypt(plaintext: &[u8]) -> Result<Vec<u8>, ring::error::Unspecified> {
-    let key = encryption_key();
+fn encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
+    let key = encryption_key()?;
     let rng = SystemRandom::new();
 
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    rng.fill(&mut nonce_bytes)?;
+    rng.fill(&mut nonce_bytes)
+        .map_err(|_| "could not draw a nonce to encrypt with".to_string())?;
     let nonce = Nonce::assume_unique_for_key(nonce_bytes);
 
     let mut ciphertext = plaintext.to_vec();
-    key.seal_in_place_append_tag(nonce, Aad::empty(), &mut ciphertext)?;
+    key.seal_in_place_append_tag(nonce, Aad::empty(), &mut ciphertext)
+        .map_err(|_| "could not encrypt".to_string())?;
 
     // Output: [nonce (12 bytes)] + [ciphertext + tag]
     let mut output = nonce_bytes.to_vec();
@@ -138,18 +138,19 @@ fn encrypt(plaintext: &[u8]) -> Result<Vec<u8>, ring::error::Unspecified> {
     Ok(output)
 }
 
-fn decrypt(data: &[u8]) -> Result<Vec<u8>, ring::error::Unspecified> {
-    let key = encryption_key();
+fn decrypt(data: &[u8]) -> Result<Vec<u8>, String> {
+    let key = encryption_key()?;
+    let bad = || "could not decrypt: the data, or the key, is not the one it was encrypted with";
 
-    if data.len() < NONCE_LEN {
-        return Err(ring::error::Unspecified);
-    }
-
-    let (nonce_bytes, ciphertext) = data.split_at(NONCE_LEN);
-    let nonce = Nonce::assume_unique_for_key(nonce_bytes.try_into().unwrap());
+    let Some((nonce_bytes, ciphertext)) = data.split_first_chunk::<NONCE_LEN>() else {
+        return Err(bad().to_string());
+    };
+    let nonce = Nonce::assume_unique_for_key(*nonce_bytes);
 
     let mut buffer = ciphertext.to_vec();
-    let plaintext = key.open_in_place(nonce, Aad::empty(), &mut buffer)?;
+    let plaintext = key
+        .open_in_place(nonce, Aad::empty(), &mut buffer)
+        .map_err(|_| bad().to_string())?;
     Ok(plaintext.to_vec())
 }
 

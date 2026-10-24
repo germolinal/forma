@@ -436,7 +436,7 @@ static USAGE_INSTRUMENTS: LazyLock<UsageInstruments> = LazyLock::new(|| {
 /// and log records, where they cost nothing extra and are exactly what makes an
 /// individual run findable. Everything labelled here is bounded by
 /// construction: `tool_kind` is a fixed enum, `mode` and `outcome` are closed
-/// sets, and provider/model come from deployed agent definitions.
+/// sets, and provider/server_address/model come from deployed agent definitions.
 pub fn record_usage(usage: &UsageTally, mode: &'static str, outcome: RunOutcome) {
     let instruments = &*USAGE_INSTRUMENTS;
 
@@ -451,12 +451,14 @@ pub fn record_usage(usage: &UsageTally, mode: &'static str, outcome: RunOutcome)
     for entry in &usage.tokens {
         let model = [
             KeyValue::new("provider", entry.provider.clone()),
+            KeyValue::new("server_address", entry.server_address.clone()),
             KeyValue::new("model", entry.model.clone()),
         ];
         let with_type = |token_type: &'static str| {
             [
                 model[0].clone(),
                 model[1].clone(),
+                model[2].clone(),
                 KeyValue::new("token_type", token_type),
             ]
         };

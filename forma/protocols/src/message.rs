@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 /// State of a message, as reflected in the Database
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ChatMessageState {
     /// The message has been sent
     #[default]
@@ -34,6 +35,7 @@ pub enum ChatMessageState {
 
 /// Represents a text part of a message.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FormaTextPart {
     /// The text content of the part.
     pub text: String,
@@ -45,6 +47,7 @@ impl From<String> for FormaTextPart {
 }
 /// Represents a URL of an image part of a message.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FormaImageUrl {
     /// The URL of the image.
     pub url: String,
@@ -54,6 +57,7 @@ pub struct FormaImageUrl {
 }
 /// Represents an image part of a message.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FormaImagePart {
     /// The URL of the image.
     pub image_url: FormaImageUrl,
@@ -61,6 +65,7 @@ pub struct FormaImagePart {
 
 /// Represents audio data for an input audio part of a message.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FormaInputAudio {
     /// Base64 encoded audio data.
     pub data: String,
@@ -70,6 +75,7 @@ pub struct FormaInputAudio {
 
 /// Represents an audio part of a message.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FormaAudioPart {
     /// The audio data for the part.
     pub input_audio: FormaInputAudio,
@@ -77,6 +83,7 @@ pub struct FormaAudioPart {
 
 /// Represents a file part of a message.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FormaFile {
     /// The base64 encoded file data, used when passing the file to the model as a string.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,6 +98,7 @@ pub struct FormaFile {
 
 /// Represents a file part of a message.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FormaFilePart {
     /// The file data for the part.
     pub file: FormaFile,
@@ -103,6 +111,7 @@ pub struct FormaFilePart {
 /// (a 10 MiB PDF as base64 would not even fit one Mongo document) and the
 /// conversation keeps working when the file behind it changes.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FormaWorkspaceFilePart {
     /// The workspace the file belongs to.
     pub workspace_id: String,
@@ -124,6 +133,7 @@ pub struct FormaWorkspaceFilePart {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum FormaMessagePart {
     /// Plain text.
     Text(FormaTextPart),
@@ -241,6 +251,7 @@ pub fn into_provider_parts(
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "role")]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum FormaMessageBody {
     /// The message was sent by the user
     User {
@@ -264,6 +275,8 @@ pub enum FormaMessageBody {
         /// The tool calls proposed by the assistant
         tool_calls: Vec<OpenAIToolChoice>,
         /// The thought signature of the part.
+        // JSON has no bytes: serde writes them as an array of numbers.
+        #[cfg_attr(feature = "openapi", schema(value_type = Option<Vec<u8>>))]
         thought_signature: Option<bytes::Bytes>,
         /// The bundle of each tool call that has one, by tool call ID. Only
         /// there so a reopened session renders its tool calls as the live
@@ -341,6 +354,7 @@ impl FormaMessageBody {
 
 /// The ID of a message
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessageId(pub String);
 
 impl Display for MessageId {
@@ -361,6 +375,8 @@ pub type FormaMessage = GenericFormaMessage<DateTime<Utc>>;
 /// A user, tool, assistant, or developer message, generic
 /// over the potential DB id and date types
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = FormaMessage, bound = ""))]
 pub struct GenericFormaMessage<DATE> {
     /// The content of the message
     #[serde(flatten)]
@@ -368,6 +384,7 @@ pub struct GenericFormaMessage<DATE> {
 
     /// The ID of the message itslf
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub id: Option<MessageId>,
 
     /// The user that owns this message
@@ -377,6 +394,7 @@ pub struct GenericFormaMessage<DATE> {
 
     /// The time of creation of this
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = DateTime))]
     pub created_at: Option<DATE>,
 
     /// A collection of all the reactions

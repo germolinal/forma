@@ -36,7 +36,11 @@ impl FormaDB for NoneDB {
         Ok(String::new())
     }
 
-    async fn remove_agent_deployment(&self, deployment_id: &str) -> Result<String, FormaError> {
+    async fn remove_agent_deployment(
+        &self,
+        _user_id: &str,
+        deployment_id: &str,
+    ) -> Result<String, FormaError> {
         Ok(deployment_id.to_string())
     }
 

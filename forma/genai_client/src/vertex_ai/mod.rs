@@ -391,7 +391,7 @@ impl VertexAI {
 
         let role = match messages.first() {
             Some(v) => v.role.clone(),
-            None => panic!("no message"),
+            None => return Err("there are no messages to send to Vertex AI".to_string()),
         };
         if role == "system" || role == "developer" {
             ret.system_instruction = Some(messages[0].clone());
@@ -399,7 +399,9 @@ impl VertexAI {
         } else if role == "user" {
             ret.contents = messages;
         } else {
-            panic!("unknown message role {role}")
+            return Err(format!(
+                "a conversation for Vertex AI cannot start with a '{role}' message"
+            ));
         }
 
         // Gemini requires that every `functionCall` in a model turn be answered
@@ -664,6 +666,16 @@ impl VertexAI {
     }
 }
 
+/// The host Vertex AI serves `location` from: `global` has the unprefixed
+/// one, a region its own (`us-central1-aiplatform.googleapis.com`).
+pub fn vertex_ai_host(location: &str) -> String {
+    if location == "global" {
+        "aiplatform.googleapis.com".to_string()
+    } else {
+        format!("{location}-aiplatform.googleapis.com")
+    }
+}
+
 #[async_trait]
 impl GenaiClientTrait for VertexAI {
     type Chunk = LLMChunk;
@@ -737,6 +749,12 @@ impl GenaiClientTrait for VertexAI {
         self.tools.len()
     }
 
+    /// From the location alone: the endpoint also needs the project, which
+    /// the host does not depend on.
+    fn server_address(&self) -> String {
+        vertex_ai_host(&self.location)
+    }
+
     fn chat_endpoint(&self) -> Result<String, String> {
         let api_endpoint = if &self.location == "global" {
             "https://aiplatform.googleapis.com".to_string()
@@ -754,8 +772,10 @@ impl GenaiClientTrait for VertexAI {
         &self,
         messages: Vec<M>,
         allowed_tools: Option<Vec<String>>,
-    ) -> Result<crate::ByteStream<O>, reqwest::Error> {
-        self.chat_stream::<M, O>(messages, allowed_tools).await
+    ) -> Result<crate::ByteStream<O>, String> {
+        self.chat_stream::<M, O>(messages, allowed_tools)
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -918,9 +938,19 @@ impl From<Data> for OpenAIMessagePart {
                 OpenAIMessagePart::Text(p)
             }
             Data::InlineData(f) => OpenAIMessagePart::File(f.into()),
-            Data::FileData(_f) => {
-                todo!("VertexAI FileData is not yet supported")
+            // What the model answers with is the provider's to decide, so a
+            // kind of part Forma does not use is kept as words, not a crash.
+            Data::FileData(f) if f.mime_type.starts_with("image/") => {
+                OpenAIMessagePart::ImageUrl(OpenAIImagePart {
+                    image_url: crate::openai::v1::OpenAIImageUrl {
+                        url: f.file_uri,
+                        detail: None,
+                    },
+                })
             }
+            Data::FileData(f) => OpenAIMessagePart::Text(OpenAITextPart {
+                text: format!("[a file ({}): {}]", f.mime_type, f.file_uri),
+            }),
             Data::FunctionCall(_b) => {
                 panic!(
                     "VertexAI Function Call cannot be turned into OpenAI Part. use `translate_function_to_tool()`"
@@ -936,14 +966,15 @@ impl From<Data> for OpenAIMessagePart {
                     .to_string();
                 OpenAIMessagePart::Text(OpenAITextPart { text })
             }
-            Data::ExecutableCode(_) => {
-                todo!("VertexAI ExecutableCode is not yet supported")
-            }
-            Data::CodeExecutionResult(_) => {
-                todo!("VertexAI CodeExecutionResult is not yet supported")
-            }
-            _ => {
-                unreachable!("unexpected type part from Vertex AI: {:?} ", data)
+            Data::ExecutableCode(c) => OpenAIMessagePart::Text(OpenAITextPart {
+                text: format!("```\n{}\n```", c.code),
+            }),
+            Data::CodeExecutionResult(r) => OpenAIMessagePart::Text(OpenAITextPart {
+                text: format!("```\n{}\n```", r.output),
+            }),
+            other => {
+                warn!("ignoring a kind of part Vertex AI answered with: {other:?}");
+                OpenAIMessagePart::Text(OpenAITextPart::default())
             }
         }
     }
@@ -1005,10 +1036,14 @@ impl From<Content> for UserMessage {
 
 impl From<Candidate> for MessageChoice {
     fn from(value: Candidate) -> Self {
-        let message = if let Some(content) = value.content {
-            LLMMessage::Assistant(content.into())
-        } else {
-            unreachable!("no message returned from VertexAI")
+        // A candidate without content is how Gemini answers when it blocks
+        // one (`finish_reason` says why): an empty answer, not a crash.
+        let message = match value.content {
+            Some(content) => LLMMessage::Assistant(content.into()),
+            None => {
+                warn!(finish_reason = ?value.finish_reason, "Vertex AI answered with no content");
+                LLMMessage::Assistant(AssistantMessage::default())
+            }
         };
 
         Self {
@@ -1193,7 +1228,11 @@ impl GenaiMessageTrait for Content {
             "user" => Role::User,
             "model" => Role::Assistant,
             "system" => Role::System,
-            _ => panic!("unexpected role '{}' in VertexAI message", self.role),
+            // Vertex AI names only `user` and `model`.
+            other => {
+                warn!("unexpected role '{other}' in a Vertex AI message; read as the user's");
+                Role::User
+            }
         }
     }
 
@@ -2300,11 +2339,20 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn part_file_data_conv() {
-        let f = FileData::default();
-        let part = Data::FileData(Box::new(f));
-        let _other_part: OpenAIMessagePart = part.into();
+        // A picture by URL is an image; any other file, words saying where.
+        let mut f = FileData::default();
+        f.mime_type = "image/png".to_string();
+        f.file_uri = "gs://bucket/a.png".to_string();
+        let part: OpenAIMessagePart = Data::FileData(Box::new(f)).into();
+        assert!(
+            matches!(part, OpenAIMessagePart::ImageUrl(p) if p.image_url.url == "gs://bucket/a.png")
+        );
+        let mut f = FileData::default();
+        f.mime_type = "application/pdf".to_string();
+        f.file_uri = "gs://bucket/a.pdf".to_string();
+        let part: OpenAIMessagePart = Data::FileData(Box::new(f)).into();
+        assert!(matches!(part, OpenAIMessagePart::Text(t) if t.text.contains("gs://bucket/a.pdf")));
     }
     #[test]
     #[should_panic]
@@ -2525,19 +2573,23 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn part_executable_code_conv() {
-        let f = ExecutableCode::default();
+        // Code the model ran is kept as text.
+        let mut f = ExecutableCode::default();
+        f.code = "print(1)".to_string();
         let part = Data::ExecutableCode(Box::new(f));
-        let _other_part: OpenAIMessagePart = part.into();
+        let other_part: OpenAIMessagePart = part.into();
+        assert!(matches!(other_part, OpenAIMessagePart::Text(t) if t.text.contains("print(1)")));
     }
 
     #[test]
-    #[should_panic]
     fn part_code_execution_resilt_conv() {
-        let f = CodeExecutionResult::default();
+        // So is what it printed.
+        let mut f = CodeExecutionResult::default();
+        f.output = "1".to_string();
         let part = Data::CodeExecutionResult(Box::new(f));
-        let _other_part: OpenAIMessagePart = part.into();
+        let other_part: OpenAIMessagePart = part.into();
+        assert!(matches!(other_part, OpenAIMessagePart::Text(t) if t.text.contains('1')));
     }
 
     #[test]
@@ -3048,11 +3100,11 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn bad_role() {
+        // Read as the user's, rather than bringing the run down.
         let mut content = Content::default();
         content.role = "no real role".to_string();
-        content.role();
+        assert_eq!(content.role(), Role::User);
     }
 
     #[test]

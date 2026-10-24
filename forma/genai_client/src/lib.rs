@@ -6,7 +6,6 @@ pub mod vertex_ai;
 use async_trait::async_trait;
 use derive::FormaDocs;
 pub use events::SSEvent;
-use reqwest::Error as ReqwestError;
 use serde::{Deserialize, Serialize};
 pub mod audio;
 pub use audio::AudioFormat;
@@ -159,20 +158,27 @@ pub struct UserMessage {
 
 /// Assistant message (role: "assistant")
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AssistantMessage {
+    /// What the model said: its text, and the files it produced.
     #[serde(default)]
     pub content: Vec<OpenAIMessagePart>,
+    /// Why the model refused to answer, if it did.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
+    /// Who wrote it, among several of the same role.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     // pub annotations: .. not supported yet
+    /// Audio the model answered with.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio: Option<OpenAIAudioResponse>,
     /// The tool proposed made by the assistant
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<OpenAIToolChoice>,
     /// The thought signature of the part.
+    // JSON has no bytes: serde writes them as an array of numbers.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Vec<u8>>))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thought_signature: Option<bytes::Bytes>,
 }
@@ -442,6 +448,15 @@ impl GenaiClientTrait for GenaiClient {
         }
     }
 
+    fn server_address(&self) -> String {
+        match &self {
+            Self::Ollama(c) => c.server_address(),
+            Self::OpenaiV1(c) => c.server_address(),
+            Self::Groq(c) => c.server_address(),
+            Self::VertexAi(c) => c.server_address(),
+        }
+    }
+
     /// Generate a response from the LLM client
     /// If `allowed_tools` is `None`, all tools are made available;
     /// if it is `Some(vector)`, only those within that list are allowed.
@@ -453,7 +468,7 @@ impl GenaiClientTrait for GenaiClient {
         &self,
         messages: Vec<M>,
         allowed_tools: Option<Vec<String>>,
-    ) -> Result<ByteStream<O>, ReqwestError> {
+    ) -> Result<ByteStream<O>, String> {
         use futures::StreamExt;
 
         let messages: Vec<Self::Message> = messages.into_iter().map(|x| x.into()).collect();

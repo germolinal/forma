@@ -2,7 +2,7 @@ use crate::server::{
     RuntimeTrait,
     runtime::{
         adapters::{
-            CompletionResult, NewSessionResult, ResumeResult, completion, create_session,
+            Answer, CompletionResult, NewSessionResult, ResumeResult, completion, create_session,
             resume_completion,
         },
         default_context_window_messages,
@@ -76,10 +76,10 @@ impl OpenAISyncAdapter {
         headers: HeaderMap,
         State(state): State<T>,
         UserChatMessage(message): UserChatMessage<OpenAIChatMessage>,
-    ) -> Result<Json<CompletionResult<OpenAIChatMessage>>, (StatusCode, String)> {
+    ) -> Result<Json<Answer<CompletionResult<OpenAIChatMessage>>>, (StatusCode, String)> {
         let args = state.job_args(&headers, n_messages).await?;
         let result = completion(args, message).await?;
-        Ok(Json(result.result))
+        Ok(Json(result.into()))
     }
 
     async fn resume<DB: FormaDB, T: RuntimeState<DB>>(
@@ -87,10 +87,10 @@ impl OpenAISyncAdapter {
         headers: HeaderMap,
         State(state): State<T>,
         Json(req): Json<ResumeRequest>,
-    ) -> Result<Json<ResumeResult<OpenAIChatMessage>>, (StatusCode, String)> {
+    ) -> Result<Json<Answer<ResumeResult<OpenAIChatMessage>>>, (StatusCode, String)> {
         let args = state.job_args(&headers, n_messages).await?;
         let result = resume_completion::<DB, OpenAIChatMessage>(args, req).await?;
-        Ok(Json(result.result))
+        Ok(Json(result.into()))
     }
 }
 

@@ -25,9 +25,12 @@ bytes = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
+utoipa = { workspace = true, optional = true }
 
 [dev-dependencies]
 
 [features]
 default = []
 integration_test = []
+# OpenAPI schemas for the types that travel over Forma's HTTP APIs.
+openapi = ["dep:utoipa"]

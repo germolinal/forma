@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Specifies the output audio format. Must be one of wav, mp3, flac, opus, or pcm16.
 #[derive(Default, Debug, Serialize, Deserialize, Copy, Clone)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum AudioFormat {
     Wav,
     Mp3,

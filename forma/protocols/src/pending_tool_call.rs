@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Represents a tool that is waiting for external feedback.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PendingToolCall {
     /// ID of the pending tool call
     pub tool_call_id: String,

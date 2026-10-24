@@ -627,6 +627,7 @@ impl Node {
             node_id: self.id.clone(),
             model,
             provider: llm.otel_provider().to_string(),
+            server_address: llm.server_address(),
             usage: (&response.usage).into(),
         })?;
         Ok(())
@@ -675,7 +676,7 @@ impl Node {
         span.record("gen_ai.request.presence_penalty", llm.presence_penalty());
         span.record("gen_ai.request.temperature", llm.temperature());
         span.record("gen_ai.request.top_p", llm.top_p());
-        span.record("server.address", llm.chat_endpoint().unwrap());
+        span.record("server.address", llm.server_address());
 
         // The conversation, once, and only when content is opted into: it is
         // what makes a span large.

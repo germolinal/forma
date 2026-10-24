@@ -54,6 +54,7 @@ fn resolve_secret(value: &str) -> Result<String, FormaError> {
 /// `confirm_before_calling` and `just_for` defaults. A missing field means
 /// "inherit the parent value."
 #[derive(Clone, Debug, Default, Serialize, Deserialize, FormaDocs)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct McpToolOverride {
     /// Override `confirm_before_calling` for this specific tool.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -407,6 +408,7 @@ fn normalize_schema(value: &mut Value) {
 /// that holds the value (e.g. `token: MY_MCP_TOKEN`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum McpAuth {
     /// Interactive OAuth 2.0 authorization_code + PKCE flow.
     ///
@@ -451,15 +453,15 @@ pub enum McpAuth {
 /// and `just_for` are applied to every tool; use the `tools` map to override
 /// either value for specific tools by name.
 #[derive(Clone, Debug, Serialize, Deserialize, FormaDocs)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct McpToolDefinition {
     /// The URL of the MCP server.
     pub url: String,
 
     /// Authentication configuration. Omit for unauthenticated servers.
     ///
-    /// Two strategies are available:
-    /// - `oauth-discovery` (default): let the MCP server advertise its own auth metadata.
-    /// - `client-credentials`: supply the token endpoint URL explicitly.
+    /// The one strategy is `oauth`: OAuth 2.0 with a client registered with
+    /// the server's authorization server, on behalf of the user.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth: Option<McpAuth>,
 

@@ -265,3 +265,87 @@ its history scanned for secrets, and made public.
   as the alternative. Every workflow passes `actionlint` 1.7.12.
 - v0.2.1 published everything but the `forma` image; what is pending is in
   `OPEN_SOURCE.md` ("Releases").
+
+## OpenAPI (2026-10-23)
+
+The HTTP APIs are described in OpenAPI 3.1, generated from the code, so that
+people (and their coding agents) can build on them: `forma openapi <api>`
+prints one, and `make docs` writes all six to `docs/src/api/openapi/`
+(git-ignored, like the reference pages), which `docs/src/api/explorer.html`
+shows with Swagger UI (`swagger-ui-dist`, pinned). The prose is in
+`docs/src/api/`.
+
+- **`utoipa` 6 and `utoipa-axum`**, behind an `openapi` feature (in `forma`,
+  `protocols` and `genai_client`), which `api` turns on: the CLI and the
+  manager have it, production servers do not. `aide` was the alternative (it
+  infers from axum's types), but it is on `schemars` 0.9 and Forma on 1.2.
+  The types that travel derive `ToSchema` under the feature; their doc
+  comments are the schemas' descriptions, so `missing_docs` keeps them
+  described.
+- **One description per client** (`sync`, `sse`, `ai-sdk-v5`, `whatsapp`,
+  `telegram`), plus the manager's: a runtime serves the same paths to every
+  client, but they take and return different things.
+- **The manager's routes and description are one declaration**
+  (`OpenApiRouter`, `src/manager.rs`, where the manager moved from
+  `bin/forma-manager.rs`). The runtime's handlers are generic methods, which
+  `utoipa` cannot describe in place, so `src/server/openapi.rs` describes each
+  client's operations, on the paths the router uses; a test sends every
+  operation described to the client's real router, and fails on a 404 or 405.
+- **The schemas are tested against what serde sends**: real events, answers,
+  sessions and usage are checked against the generated schemas (`jsonschema`),
+  and malformed ones must be refused, so a schema that drifts from the type
+  fails the tests.
+- **OpenAPI 3.1, not 3.2**: 3.2's `itemSchema` describes the items of a
+  stream, but viewers and generators do not all read 3.2 yet. A stream is
+  `text/event-stream` with the schema of one `data:` line (`SseLine`,
+  `AiSdkV5Line`), and the docs explain the rest.
+- `AiSdkV5Event` lost its hand-written `Serialize`: its one `Data { name, data }`
+  variant (serialized as `data-<name>`) is now a variant per event
+  (`data-still-suspended`, `data-grounding-score`, `data-reference`), which
+  serde derives, and a schema can describe. The JSON sent is unchanged.
+- `GenericFormaMessage<DATE>` and `GenericSessionData<ID, DATE>` describe their
+  dates as strings; the message is named `FormaMessage` in the description
+  (`utoipa` would call it `FormaMessage_String`).
+- Agent definitions are plain objects in the manager's description: their
+  schema is the reference documentation's (`FormaDocs`). Deriving `ToSchema`
+  over every definition type would put it in the description too.
+- Found along the way, and fixed: `McpToolDefinition::auth` documented two
+  strategies (`oauth-discovery`, `client-credentials`) that do not exist; the
+  deployment guide's ids were UUIDs, which the manager refuses (they are
+  MongoDB ids).
+
+## Failures, ownership and usage (2026-10-23)
+
+- **A panic is reported, never answered as a success.** A run's task is
+  unwound (`catch_unwind` in `call_agent`) into an `error` event, and a run
+  whose channel closes with neither `finish` nor `error` is an error too,
+  both streamed and in JSON answers. Before, a panic (a missing
+  `OPENAI_API_KEY`) ended `sse` streams with no `error`, and `sync` answered
+  `completed` with an empty message. The panics that input, configuration or
+  providers can trigger now return errors: a missing API key, an answer the
+  provider sends that does not parse, Vertex AI parts Forma does not use
+  (kept as text) or a candidate without content (a blocked answer), and
+  `FORMA_ENCRYPTION_KEY` (missing, malformed; and two first uses at once,
+  which panicked on "already initialized"). `GenaiClientTrait::stream`
+  returns `String` errors, as `generate` does.
+- **Image generation reports its provider as OpenTelemetry names it**
+  (`gcp.vertex_ai`), as LLM calls do: it was `vertex-ai`, a second price key
+  for the same provider. `provider` names the API spoken, not who bills: all
+  OpenAI-compatible endpoints are `openai` (`docs/src/api/usage-and-billing.md`).
+- **`DELETE /deployments` checks ownership** (`X-User-ID`), as `PUT` does:
+  someone else's deployment is a `404`. `FormaDB::remove_agent_deployment`
+  takes the user. Callers must now send `X-User-ID`.
+- **JSON answers carry `usage`** (`sync`, and `ai-sdk-v5`'s `/v1/resume`), next
+  to `status` and `data`: additive.
+- **The AI SDK's own `file` parts are read** (`{type: file, mediaType, url}`),
+  as the AI SDK sends attachments, and files go back as such in
+  `/v1/resume`'s answer. Pictures may be links; other files must be `data:`
+  URLs (Forma does not fetch them), or the message is refused with a `400`.
+- **Usage names the host as well** (`server_address`, OpenTelemetry's
+  `server.address`), and is grouped by `(provider, server_address, model)`:
+  `provider` is the API spoken, so every OpenAI-compatible server is
+  `openai`, and the host is what tells OpenAI from OpenRouter for a bill.
+  Additive (empty from older runtimes). The LLM metrics carry it as a label,
+  and LLM spans now record the host as `server.address`, as the convention
+  says (they recorded the full URL, through an `unwrap` that an empty
+  endpoint would have panicked on).

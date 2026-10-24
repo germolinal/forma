@@ -47,6 +47,7 @@ impl std::ops::AddAssign<SSEvent> for AssistantMessage {
 /// input is discounted, reasoning is billed at the output rate. Adding either to
 /// its parent double-charges.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TokenUsage {
     /// Prompt tokens, cached ones included.
     pub input_tokens: usize,
@@ -83,14 +84,23 @@ impl From<&OpenAIUsage> for TokenUsage {
     }
 }
 
-/// What one `(provider, model)` pair consumed across a whole run.
+/// What one `(provider, server_address, model)` consumed across a whole run.
 ///
 /// Provider is half the key, not decoration: the same model name reached
 /// through two backends is two different prices, and through a local Ollama it
 /// is free.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ModelUsage {
+    /// The backend that served the calls, by its OpenTelemetry GenAI name
+    /// (`ollama`, `openai`, `groq`, `gcp.vertex_ai`).
     pub provider: String,
+    /// The host the calls went to (OpenTelemetry's `server.address`): with
+    /// `provider`, who served them, and so who bills them. Every
+    /// OpenAI-compatible server speaks `openai`; the host tells them apart.
+    #[serde(default)]
+    pub server_address: String,
+    /// The model the provider reports having served.
     pub model: String,
     /// Provider round trips, which some plans bill per-request on top of tokens.
     pub calls: usize,
@@ -102,21 +112,30 @@ pub struct ModelUsage {
 /// seconds a code-execution sandbox ran, for instance. Summed per
 /// `(tool_kind, unit)` across a run.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ToolUsage {
+    /// The tool's kind (`code-execution`, …).
     pub tool_kind: String,
+    /// What `quantity` counts (`second`, …).
     pub unit: String,
+    /// How many `unit`s, over the whole job.
     pub quantity: u64,
 }
 
-/// Groups [`SSEvent::Usage`] events by `(provider, model)`, lists the kind of
+/// Groups [`SSEvent::Usage`] events by `(provider, server_address, model)`, lists the kind of
 /// every tool called ([`SSEvent::ToolInputAvailable`]), and sums
 /// [`SSEvent::ToolUsage`] by kind and unit.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UsageTally {
+    /// What each provider and model consumed, one entry per pair.
+    ///
     /// Insertion-ordered so a run's first model leads the report, which makes
     /// logs and fixtures stable to read.
     pub tokens: Vec<ModelUsage>,
+    /// The kind of every tool called, once per call.
     pub tools: Vec<String>,
+    /// What tools consumed in units of their own (absent when nothing).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_usage: Vec<ToolUsage>,
     /// Contains the unique JobID
@@ -155,18 +174,20 @@ impl UsageTally {
             SSEvent::Usage {
                 model,
                 provider,
+                server_address,
                 usage,
                 ..
             } => {
-                let entry = match self
-                    .tokens
-                    .iter_mut()
-                    .find(|e| e.model == *model && e.provider == *provider)
-                {
+                let entry = match self.tokens.iter_mut().find(|e| {
+                    e.model == *model
+                        && e.provider == *provider
+                        && e.server_address == *server_address
+                }) {
                     Some(e) => e,
                     None => {
                         self.tokens.push(ModelUsage {
                             provider: provider.clone(),
+                            server_address: server_address.clone(),
                             model: model.clone(),
                             ..Default::default()
                         });
@@ -210,15 +231,15 @@ impl UsageTally {
     /// Folds already-grouped entries in, so several runs can report as one.
     ///
     /// A single webhook delivery can carry several messages, each its own agent
-    /// run: merging keeps one row per `(provider, model)` for the whole request
+    /// run: merging keeps one row per `(provider, server_address, model)` for the whole request
     /// rather than emitting duplicate rows a consumer would have to re-group.
     pub fn merge(&mut self, entries: &[ModelUsage]) {
         for incoming in entries {
-            match self
-                .tokens
-                .iter_mut()
-                .find(|e| e.model == incoming.model && e.provider == incoming.provider)
-            {
+            match self.tokens.iter_mut().find(|e| {
+                e.model == incoming.model
+                    && e.provider == incoming.provider
+                    && e.server_address == incoming.server_address
+            }) {
                 Some(e) => {
                     e.calls += incoming.calls;
                     e.usage.input_tokens += incoming.usage.input_tokens;
@@ -234,38 +255,62 @@ impl UsageTally {
     }
 }
 
+/// Something that happened while an agent ran: what a streaming client is
+/// sent, one event per `data:` line, its `type` saying what happened.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 pub enum SSEvent {
+    /// The agent failed. Nothing follows it.
     Error {
+        /// What went wrong.
         error: String,
     },
+    /// The agent started working on the message. Always the first event.
     Start {
+        /// The id of the job, which its usage report repeats (`job_id`).
         message_id: String,
     },
+    /// A text part begins.
     TextStart {
+        /// The id its deltas and its end share.
         id: String,
     },
+    /// More text for the part `id`.
     TextDelta {
+        /// The part this text belongs to.
         id: String,
+        /// The text, to append to what came before.
         delta: String,
     },
+    /// The text part `id` is complete.
     TextEnd {
+        /// The part that ended.
         id: String,
     },
+    /// A reasoning part begins (models that expose their reasoning).
     ReasoningStart {
+        /// The id its deltas and its end share.
         id: String,
     },
+    /// More reasoning for the part `id`.
     ReasoningDelta {
+        /// The part this reasoning belongs to.
         id: String,
+        /// The reasoning, to append to what came before.
         delta: String,
     },
+    /// The reasoning part `id` is complete.
     ReasoningEnd {
+        /// The part that ended.
         id: String,
     },
+    /// A tool is about to be called.
     ToolInputStart {
+        /// The call's id, which its input and output repeat.
         tool_call_id: String,
+        /// The tool's name, as the agent defines it.
         tool_name: String,
         /// What the tool is (`tavily-web-search`, `workspace`,
         /// `code-execution`, …; see `Tool::kind`), which is what a client
@@ -276,8 +321,11 @@ pub enum SSEvent {
         /// that expanded into it.
         bundle: Option<String>,
     },
+    /// The arguments of a tool call.
     ToolInputAvailable {
+        /// The call's id.
         tool_call_id: String,
+        /// The tool's name.
         tool_name: String,
         /// Which kind of tool this is, matching the `type` tag of `ToolRunner`
         /// (`mcp`, `api-call`, `tavily-web-search`, …).
@@ -288,30 +336,52 @@ pub enum SSEvent {
         /// from an older runtime still parses.
         #[serde(default, skip_serializing_if = "String::is_empty")]
         tool_kind: String,
+        /// The arguments, as the model wrote them.
         input: serde_json::Value,
     },
+    /// What a tool call returned.
     ToolOutputAvailable {
+        /// The call's id.
         tool_call_id: String,
+        /// The tool's result.
         output: serde_json::Value,
     },
+    /// A node of the agent's workflow started working.
     StartStep {
+        /// The node's id.
         id: String,
     },
+    /// The job is done, and its turn stored: the next message can be sent.
     Finish,
+    /// The agent stopped at a tool call that needs an answer: an approval
+    /// (`confirm_before_calling`), or a delegated tool's result. Answer it
+    /// with `/v1/resume`. `finish` follows.
     RequestFeedback {
+        /// The call's id: what `/v1/resume` answers.
         tool_call_id: String,
+        /// The node that made the call.
         node_id: String,
+        /// The tool the agent wants to call.
         tool_name: String,
+        /// The arguments the agent proposed.
         arguments: serde_json::Value,
+        /// Whether the call was made by the agent's `start` workflow itself,
+        /// rather than inside a workflow tool.
         from_root: bool,
-        /// As in `ToolInputStart`.
+        /// As in `ToolInputStart`: `delegated` for a tool the client runs.
         #[serde(default, skip_serializing_if = "String::is_empty")]
         tool_type: String,
+        /// As in `ToolInputStart`.
         bundle: Option<String>,
     },
+    /// The answer to a `/v1/resume`: other calls of the same turn are still
+    /// waiting for an answer.
     StillSuspended,
     /// Reports what a single LLM call consumed, so the proxy in front of the
     /// runtime can bill it without knowing anything about providers.
+    ///
+    /// Never streamed to a client: the runtime adds these up into the usage
+    /// report that ends the stream.
     ///
     /// Emitted once per call that actually reached a provider — including calls
     /// made by non-root nodes, whose text never reaches the client. Everything
@@ -321,7 +391,7 @@ pub enum SSEvent {
     /// provider call was made.
     ///
     /// One run therefore produces many of these, and a consumer is expected to
-    /// group them by `(provider, model)` and sum.
+    /// group them by `(provider, server_address, model)` and sum.
     Usage {
         /// The node that made the call, so spend can be attributed within a
         /// graph rather than only to the run as a whole.
@@ -330,11 +400,18 @@ pub enum SSEvent {
         /// the one configured: aliases resolve to dated snapshots, and a bill
         /// should name what ran.
         model: String,
-        /// The backend that served the call, matching the `provider` tag of
-        /// `GenaiClient` (`ollama`, `openai-v1`, `groq`, `vertex-ai`). The same
-        /// model name costs different amounts through different providers, so
-        /// this is half the price key, not decoration.
+        /// The backend that served the call, by its OpenTelemetry GenAI name
+        /// (`ollama`, `openai`, `groq`, `gcp.vertex_ai`). The same model name
+        /// costs different amounts through different providers, so this is
+        /// half the price key, not decoration.
         provider: String,
+        /// The host the call went to (OpenTelemetry's `server.address`): with
+        /// `provider`, who served it. Every OpenAI-compatible server speaks
+        /// `openai`, so it is the host that tells OpenAI from OpenRouter.
+        /// Empty from runtimes that predate it.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        server_address: String,
+        /// What the call consumed.
         usage: TokenUsage,
     },
     /// What a tool consumed in a unit it is priced by, beyond the call itself:
@@ -345,17 +422,24 @@ pub enum SSEvent {
         tool_kind: String,
         /// What `quantity` counts (`second`, …). Part of the price key.
         unit: String,
+        /// How many `unit`s.
         quantity: u64,
     },
     /// Contains a reference to a document that was used as context for the model.
     Reference {
+        /// The document's title.
         title: String,
+        /// Where the document is.
         url: String,
+        /// The passage that was used, if known.
         snippet: Option<String>,
+        /// Passages that answer the question directly, if the source gave
+        /// any.
         extractive_answer: Option<Vec<String>>,
     },
     /// Contains the score of the grounding of the model's response.
     GroundingScore {
+        /// How well the answer is supported by its sources.
         score: f64,
     },
     /// A document produced during the turn: an image a tool generated, a file
@@ -370,6 +454,7 @@ pub enum SSEvent {
     FileAvailable {
         /// Groups the file with the message being built, as `TextDelta` does.
         id: String,
+        /// The file: an `image_url` or `file` part, usually a `data:` URL.
         part: OpenAIMessagePart,
     },
 }
@@ -697,6 +782,7 @@ mod testing {
             node_id: "triage".to_string(),
             model: "gemini-2.5-flash-002".to_string(),
             provider: "vertex-ai".to_string(),
+            server_address: "aiplatform.googleapis.com".to_string(),
             usage: TokenUsage {
                 input_tokens: 1200,
                 cached_input_tokens: 1024,
@@ -707,7 +793,7 @@ mod testing {
             },
         };
         assert_eq!(
-            r#"{"type":"usage","node_id":"triage","model":"gemini-2.5-flash-002","provider":"vertex-ai","usage":{"input_tokens":1200,"cached_input_tokens":1024,"output_tokens":340,"reasoning_tokens":256,"input_audio_tokens":0,"output_audio_tokens":0}}"#,
+            r#"{"type":"usage","node_id":"triage","model":"gemini-2.5-flash-002","provider":"vertex-ai","server_address":"aiplatform.googleapis.com","usage":{"input_tokens":1200,"cached_input_tokens":1024,"output_tokens":340,"reasoning_tokens":256,"input_audio_tokens":0,"output_audio_tokens":0}}"#,
             serde_json::to_string(&sse).expect("Failed to serialize SSEvent")
         );
     }
@@ -743,11 +829,37 @@ mod testing {
         assert!(billed.reasoning_tokens <= billed.output_tokens);
     }
 
+    #[test]
+    fn usage_from_two_hosts_is_two_rows() {
+        // Both speak `openai`, but OpenAI and OpenRouter bill differently.
+        let event = |host: &str| SSEvent::Usage {
+            node_id: "n".to_string(),
+            model: "gpt-5".to_string(),
+            provider: "openai".to_string(),
+            server_address: host.to_string(),
+            usage: TokenUsage {
+                input_tokens: 10,
+                ..Default::default()
+            },
+        };
+        let mut tally = UsageTally::new();
+        tally.add(&event("api.openai.com"));
+        tally.add(&event("openrouter.ai"));
+        tally.add(&event("api.openai.com"));
+        let rows: Vec<(&str, usize)> = tally
+            .tokens
+            .iter()
+            .map(|e| (e.server_address.as_str(), e.calls))
+            .collect();
+        assert_eq!(rows, [("api.openai.com", 2), ("openrouter.ai", 1)]);
+    }
+
     fn usage_event(provider: &str, model: &str, input: usize, output: usize) -> SSEvent {
         SSEvent::Usage {
             node_id: "n".to_string(),
             model: model.to_string(),
             provider: provider.to_string(),
+            server_address: String::new(),
             usage: TokenUsage {
                 input_tokens: input,
                 output_tokens: output,
@@ -842,7 +954,7 @@ mod testing {
         let json = serde_json::to_string(&tally.tokens).expect("should serialise");
         assert_eq!(
             json,
-            r#"[{"provider":"vertex-ai","model":"gemini-2.5-flash","calls":1,"input_tokens":100,"cached_input_tokens":0,"output_tokens":40,"reasoning_tokens":0,"input_audio_tokens":0,"output_audio_tokens":0}]"#
+            r#"[{"provider":"vertex-ai","server_address":"","model":"gemini-2.5-flash","calls":1,"input_tokens":100,"cached_input_tokens":0,"output_tokens":40,"reasoning_tokens":0,"input_audio_tokens":0,"output_audio_tokens":0}]"#
         );
     }
 

@@ -7,6 +7,8 @@ license = "MIT"
 
 [features]
 integration_test = []
+# OpenAPI schemas for the types that travel over Forma's HTTP APIs.
+openapi = ["dep:utoipa", "genai_client/openapi"]
 
 [dependencies]
 chrono = { workspace = true }
@@ -22,3 +24,4 @@ uuid = { workspace = true }
 ring = "0.17"
 base64 = { workspace = true }
 tracing = { workspace = true }
+utoipa = { workspace = true, optional = true }

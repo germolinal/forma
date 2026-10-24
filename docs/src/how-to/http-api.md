@@ -2,6 +2,8 @@
 
 This page describes how clients talk to a Forma agent over HTTP, using the `sync` and `sse` [runtimes](../reference_docs/auto-formaruntime.md). It is what you need to build your own back-end integration, or your own front-end.
 
+> **📌 Note**: This is a hands-on walk through the API. Its full reference, with the OpenAPI descriptions you can generate clients from (`forma openapi sse`), is in [The runtime's API](../api/runtime.md).
+
 > **📌 Note**: The `ai-sdk-v5` client uses the same three endpoints, but speaks the protocol of [Vercel's AI SDK](https://ai-sdk.dev/) (check the [client examples](../examples/clients/clients-intro.md)). The `telegram` and `whatsapp` runtimes receive webhooks from those platforms instead, so you never call them yourself.
 
 ## Headers
@@ -85,8 +87,10 @@ The `sync` runtime waits until the agent is done, and returns a single JSON obje
 A completed answer looks like this:
 
 ```json
-{"status":"completed","data":{"role":"assistant","content":[{"type":"text","text":"Nice to meet you, Peter! How are you doing today?"}]}}
+{"status":"completed","data":{"role":"assistant","content":[{"type":"text","text":"Nice to meet you, Peter! How are you doing today?"}]},"usage":{"tokens":[{"provider":"ollama","model":"llama3.1:8b","calls":1,"input_tokens":312,"cached_input_tokens":0,"output_tokens":14,"reasoning_tokens":0,"input_audio_tokens":0,"output_audio_tokens":0}],"tools":[],"job_id":"5e0c..."}}
 ```
+
+`usage` is what the job consumed (see [Usage](../api/runtime.md#usage)).
 
 > **📌 Note**: When the `start` workflow has several nodes, `content` contains one text part per node that answered, in order.
 
