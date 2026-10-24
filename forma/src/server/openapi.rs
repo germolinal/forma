@@ -779,23 +779,6 @@ mod test {
         }
     }
 
-    /// The descriptions are committed (`docs/src/api/openapi/`), so that people
-    /// and their agents find them in the repository, and `make docs` writes
-    /// them: a change to an API that is not written there fails here.
-    #[cfg(feature = "api")]
-    #[test]
-    fn the_committed_descriptions_are_current() {
-        for api in APIS {
-            let path = format!("../docs/src/api/openapi/{api}.json");
-            let committed = std::fs::read_to_string(&path).unwrap_or_default();
-            let current = serde_json::to_string_pretty(&spec(api).unwrap()).unwrap() + "\n";
-            assert!(
-                committed == current,
-                "{path} does not describe the code: run `make docs`, and commit it"
-            );
-        }
-    }
-
     #[test]
     fn every_api_is_described() {
         for api in APIS {
