@@ -2,6 +2,8 @@
 
 The previous chapters describe how an agent *should* behave. This one is about checking that it does: which evaluations to run, with which data, and how to score them. It complements the manual [checklist](./checklist-and-prompt-template.md), and each evaluation points to the chapter that defines the expected behaviour.
 
+Don't write the whole battery up front and freeze it: datasets and rubrics are built in a loop, alongside the agent (see [Iterating your evaluations](./iterating-evaluations.md)).
+
 For how evaluations work in Forma (datasets, metrics, judges, `forma eval`), start with [Evaluations](../documentation/evals.md) and [Writing metrics and datasets](../how-to/metrics-and-datasets.md).
 
 ## Approach
