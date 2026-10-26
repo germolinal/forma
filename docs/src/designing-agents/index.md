@@ -19,10 +19,11 @@ It is written for anyone building agents, with Forma or with anything else. Most
 | [Errors, uncertainty and trust](./trust-errors-uncertainty.md) | Microsoft's 18 Guidelines for Human-AI Interaction applied to agents; communicating uncertainty, owning errors, escalating. |
 | [Bad actors and security](./security-and-bad-actors.md) | Prompt injection, tool abuse, data extraction; defences that live in the system, and refusing well. |
 | [Evaluating agent behaviour](./evaluating-agent-behaviour.md) | A battery of evaluations for security, trust and experience, how to score them, and when to run them. |
+| [Iterating your evaluations](./iterating-evaluations.md) | Why datasets and rubrics should not be fixed up front, and the loop that builds them alongside the agent. |
 | [Checklist and prompt template](./checklist-and-prompt-template.md) | A review checklist and a reusable "how you converse" section for system prompts. |
-| [Lessons from practice](./lessons-from-practice.md) | What the author of Forma learned building agents with it: conventions, Forma-specific settings, and mistakes worth avoiding. |
+| [Lessons from practice](./lessons-from-practice.md) | What the author of Forma learned building agents: conventions, settings, and mistakes worth avoiding. |
 
-The first ten chapters summarise published guidance and research, with references at the end of each. The last one is different: it is experience, not literature.
+The first ten chapters summarise published guidance and research, with references at the end of each. *Iterating your evaluations* and *Lessons from practice* are different: they are mostly experience, not literature.
 
 ## Where to start
 
@@ -34,6 +35,7 @@ The first ten chapters summarise published guidance and research, with reference
 - **"It got something wrong, or doesn't know."** [Errors, uncertainty and trust](./trust-errors-uncertainty.md).
 - **"Someone is trying to manipulate it."** [Bad actors and security](./security-and-bad-actors.md).
 - **"How do I know it does all of this?"** [Evaluating agent behaviour](./evaluating-agent-behaviour.md), together with Forma's [evaluations](../documentation/evals.md).
+- **"My evals say one thing, but the answers say another."** [Iterating your evaluations](./iterating-evaluations.md).
 
 ## Three rules that apply everywhere
 

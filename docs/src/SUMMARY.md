@@ -37,6 +37,7 @@
   - [Errors, uncertainty and trust](./designing-agents/trust-errors-uncertainty.md)
   - [Bad actors and security](./designing-agents/security-and-bad-actors.md)
   - [Evaluating agent behaviour](./designing-agents/evaluating-agent-behaviour.md)
+  - [Iterating your evaluations](./designing-agents/iterating-evaluations.md)
   - [Checklist and prompt template](./designing-agents/checklist-and-prompt-template.md)
   - [Lessons from practice](./designing-agents/lessons-from-practice.md)
 
