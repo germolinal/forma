@@ -13,13 +13,11 @@ const channels = [
     One definition, many channels
   </h2>
   <ul class="mt-10 border-t">
-    {
-      channels.map(([name, description]) => (
-        <li class="flex flex-col gap-0.5 border-b py-4 sm:flex-row sm:justify-between sm:gap-4">
-          <strong class="font-display font-semibold">{name}</strong>
-          <span class="text-muted-foreground">{description}</span>
-        </li>
-      ))
-    }
+    {channels.map(([name, description]) => (
+      <li class="flex flex-col gap-0.5 border-b py-4 sm:flex-row sm:justify-between sm:gap-4">
+        <strong class="font-display font-semibold">{name}</strong>
+        <span class="text-muted-foreground">{description}</span>
+      </li>
+    ))}
   </ul>
 </section>
