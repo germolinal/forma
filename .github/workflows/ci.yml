@@ -69,7 +69,9 @@ jobs:
   test:
     name: Test
     needs: [fmt, clippy]
-    runs-on: ubuntu-latest
+    # MongoDB 8 refuses to start on Linux 6.19 and newer, which ubuntu-latest
+    # (26.04) runs: https://jira.mongodb.org/browse/SERVER-121912
+    runs-on: ubuntu-24.04
     services:
       mongo:
         image: mongo:8
