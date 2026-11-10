@@ -143,4 +143,4 @@ tempfile = "3.24"
 # The OpenAPI tests: sending requests to a router, and checking what Forma
 # sends against the schemas that describe it.
 tower = { version = "0.5", features = ["util"] }
-jsonschema = { version = "0.33", default-features = false }
+jsonschema = { version = "0.61", default-features = false }

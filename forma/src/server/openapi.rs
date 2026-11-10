@@ -803,7 +803,7 @@ mod test {
         let value = serde_json::to_value(value).unwrap();
         validator
             .iter_errors(&value)
-            .map(|e| format!("{e} (at {})", e.instance_path))
+            .map(|e| format!("{e} (at {})", e.instance_path()))
             .collect()
     }
 
