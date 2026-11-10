@@ -72,7 +72,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       mongo:
-        image: mongo:8
+        # MongoDB 8 refuses to start on Linux 6.19 and newer, which every
+        # hosted runner now has: https://jira.mongodb.org/browse/SERVER-121912
+        image: mongo:7
         env:
           MONGO_INITDB_ROOT_USERNAME: root
           MONGO_INITDB_ROOT_PASSWORD: example
@@ -85,6 +87,9 @@ jobs:
           --health-retries 20
       phoenix:
         image: arizephoenix/phoenix:latest
+        env:
+          # Phoenix 21 requires a token by default; the tests send none.
+          PHOENIX_ENABLE_AUTH: "false"
         ports:
           - 4317:4317
           - 6006:6006
