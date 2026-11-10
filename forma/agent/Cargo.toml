@@ -37,7 +37,7 @@ google-cloud-auth = { version = "1.17", default-features = false, features = [
 ] }
 url = "2.5"
 sha2 = "0.11"
-scraper = "0.27"
+scraper = "0.29"
 htmd = "0.5"
 
 [dev-dependencies]
