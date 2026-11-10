@@ -30,15 +30,13 @@ const items = [
 <section class="shell section border-t">
   <h2 class="text-3xl font-semibold sm:text-4xl">What Forma does for you</h2>
   <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-    {
-      items.map((item) => (
-        <article class="bg-card text-card-foreground rounded-xl border p-6">
-          <h3 class="text-lg font-semibold">{item.title}</h3>
-          <p class="text-muted-foreground mt-2 text-[0.95rem] leading-relaxed">
-            {item.body}
-          </p>
-        </article>
-      ))
-    }
+    {items.map((item) => (
+      <article class="bg-card text-card-foreground rounded-xl border p-6">
+        <h3 class="text-lg font-semibold">{item.title}</h3>
+        <p class="text-muted-foreground mt-2 text-[0.95rem] leading-relaxed">
+          {item.body}
+        </p>
+      </article>
+    ))}
   </div>
 </section>

@@ -37,22 +37,19 @@ const apis = [
     </p>
   </div>
   <ul class="mt-10 border-t">
-    {
-      apis.map(([api, name, description]) => (
-        <li class="flex flex-col gap-0.5 border-b py-4 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-          <a
-            href={docs.openapi(api)}
-            class="font-display font-semibold underline-offset-4 hover:underline"
-          >
-            {name}
-          </a>
-          <span class="text-muted-foreground">{description}</span>
-        </li>
-      ))
-    }
+    {apis.map(([api, name, description]) => (
+      <li class="flex flex-col gap-0.5 border-b py-4 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+        <a
+          href={docs.openapi(api)}
+          class="font-display font-semibold underline-offset-4 hover:underline"
+        >
+          {name}
+        </a>
+        <span class="text-muted-foreground">{description}</span>
+      </li>
+    ))}
   </ul>
-  <pre
-    class="bg-panel text-panel-foreground mt-8 max-w-2xl overflow-x-auto rounded-xl p-6 font-mono text-sm leading-7"><code>forma openapi sse -o forma-sse.json</code></pre>
+  <pre class="bg-panel text-panel-foreground mt-8 max-w-2xl overflow-x-auto rounded-xl p-6 font-mono text-sm leading-7"><code>forma openapi sse -o forma-sse.json</code></pre>
   <div class="mt-4 flex flex-wrap gap-x-6 gap-y-2">
     <Button href={docs.apiExplorer} variant="link" class="px-0">
       Explore the APIs →

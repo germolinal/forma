@@ -60,70 +60,61 @@ const value = (s: (typeof series)[number], t: Target, key: string) =>
 ---
 
 <div class="bg-card text-card-foreground mt-10 rounded-xl border p-6">
-  <div
-    class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-  >
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <h3 class="text-lg font-semibold">In detail</h3>
     <ul class="flex flex-wrap gap-x-5 gap-y-1 text-sm" aria-label="Legend">
-      {
-        series.map((s) => (
-          <li class="flex items-center gap-2">
-            <span
-              class={`size-3 rounded-[3px] ${s.color}`}
-              aria-hidden="true"
-            />
-            {s.name}
-          </li>
-        ))
-      }
+      {series.map((s) => (
+        <li class="flex items-center gap-2">
+          <span class={`size-3 rounded-[3px] ${s.color}`} aria-hidden="true" />
+          {s.name}
+        </li>
+      ))}
     </ul>
   </div>
 
   <div class="mt-6 grid gap-x-10 gap-y-8 md:grid-cols-2">
-    {
-      panels.map((panel) => {
-        const max = Math.max(
-          ...series.flatMap((s) =>
-            targets.map((t) => value(s, t.key, panel.key)),
-          ),
-        );
-        return (
-          <figure>
-            <figcaption>
-              <span class="font-medium">{panel.title}</span>
-              <span class="text-muted-foreground block text-sm">
-                {panel.note}
-              </span>
-            </figcaption>
-            <div class="mt-4 space-y-4">
-              {targets.map((t) => (
-                <div class="grid grid-cols-[6.5rem_1fr] items-center gap-3">
-                  <span class="text-sm">{t.name}</span>
-                  <div class="space-y-0.5">
-                    {series.map((s) => {
-                      const v = value(s, t.key, panel.key);
-                      const text = panel.format(v);
-                      return (
-                        <div class="flex items-center gap-2">
-                          <div
-                            class={`h-3.5 rounded-r-[4px] ${s.color}`}
-                            style={`width: ${Math.max(0.5, (v / max) * 72)}%`}
-                            title={`${t.name}, ${s.name}: ${text}`}
-                          />
-                          <span class="text-xs tabular-nums whitespace-nowrap">
-                            {text}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+    {panels.map((panel) => {
+      const max = Math.max(
+        ...series.flatMap((s) =>
+          targets.map((t) => value(s, t.key, panel.key)),
+        ),
+      );
+      return (
+        <figure>
+          <figcaption>
+            <span class="font-medium">{panel.title}</span>
+            <span class="text-muted-foreground block text-sm">
+              {panel.note}
+            </span>
+          </figcaption>
+          <div class="mt-4 space-y-4">
+            {targets.map((t) => (
+              <div class="grid grid-cols-[6.5rem_1fr] items-center gap-3">
+                <span class="text-sm">{t.name}</span>
+                <div class="space-y-0.5">
+                  {series.map((s) => {
+                    const v = value(s, t.key, panel.key);
+                    const text = panel.format(v);
+                    return (
+                      <div class="flex items-center gap-2">
+                        <div
+                          class={`h-3.5 rounded-r-[4px] ${s.color}`}
+                          style={`width: ${Math.max(0.5, (v / max) * 72)}%`}
+                          title={`${t.name}, ${s.name}: ${text}`}
+                        />
+                        <span class="text-xs tabular-nums whitespace-nowrap">
+                          {text}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          </figure>
-        );
-      })
-    }
+              </div>
+            ))}
+          </div>
+        </figure>
+      );
+    })}
   </div>
 
   <details class="mt-8 text-sm">
@@ -135,32 +126,28 @@ const value = (s: (typeof series)[number], t: Target, key: string) =>
         <thead class="text-muted-foreground">
           <tr class="border-b">
             <th class="py-2 pr-4 font-medium">Measure</th>
-            {
-              targets.flatMap((t) =>
-                series.map((s) => (
-                  <th class="py-2 pr-4 font-medium">
-                    {t.name}, {s.name.toLowerCase()}
-                  </th>
-                )),
-              )
-            }
+            {targets.flatMap((t) =>
+              series.map((s) => (
+                <th class="py-2 pr-4 font-medium">
+                  {t.name}, {s.name.toLowerCase()}
+                </th>
+              )),
+            )}
           </tr>
         </thead>
         <tbody>
-          {
-            panels.map((panel) => (
-              <tr class="border-b last:border-0">
-                <th class="py-2 pr-4 font-medium">{panel.title}</th>
-                {targets.flatMap((t) =>
-                  series.map((s) => (
-                    <td class="py-2 pr-4">
-                      {panel.format(value(s, t.key, panel.key))}
-                    </td>
-                  )),
-                )}
-              </tr>
-            ))
-          }
+          {panels.map((panel) => (
+            <tr class="border-b last:border-0">
+              <th class="py-2 pr-4 font-medium">{panel.title}</th>
+              {targets.flatMap((t) =>
+                series.map((s) => (
+                  <td class="py-2 pr-4">
+                    {panel.format(value(s, t.key, panel.key))}
+                  </td>
+                )),
+              )}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
