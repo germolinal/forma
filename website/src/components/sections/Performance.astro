@@ -54,36 +54,35 @@ const stats = [
   </p>
 
   <dl class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-    {
-      stats.map((stat) => (
-        <div class="bg-card text-card-foreground flex flex-col rounded-xl border p-6">
-          <dt class="text-muted-foreground order-2 mt-1 text-sm font-medium">
-            {stat.label}
-          </dt>
-          <dd class="font-display order-1 text-3xl font-semibold tabular-nums">
-            {stat.otel}
-          </dd>
-        </div>
-      ))
-    }
+    {stats.map((stat) => (
+      <div class="bg-card text-card-foreground flex flex-col rounded-xl border p-6">
+        <dt class="text-muted-foreground order-2 mt-1 text-sm font-medium">
+          {stat.label}
+        </dt>
+        <dd class="font-display order-1 text-3xl font-semibold tabular-nums">
+          {stat.otel}
+        </dd>
+      </div>
+    ))}
   </dl>
 
   <PerformanceChart />
 
   <p class="text-muted-foreground mt-6 max-w-3xl text-sm leading-relaxed">
-    Measured with <code class="font-mono">make bench</code> ({
-      plain.machine.replace(/\.$/, "")
-    }). Each message is a full tool loop: an LLM call that asks for a tool, the
-    tool, and an LLM call that answers. The LLM is a mock, so the numbers are
-    Forma's alone; MongoDB ran on the same machine, indexed, holding 50,000
-    other messages. "With OpenTelemetry" exports traces, metrics and logs to a
-    collector, which costs memory and CPU, more so under heavy load. A cloud's
-    shared CPU answers fewer messages per second, but memory and CPU per message
-    carry over.
+    Measured with <code class="font-mono">make bench</code> (
+    {plain.machine.replace(/\.$/, "")}). Each message is a full tool loop: an
+    LLM call that asks for a tool, the tool, and an LLM call that answers. The
+    LLM is a mock, so the numbers are Forma's alone; MongoDB ran on the same
+    machine, indexed, holding 50,000 other messages. "With OpenTelemetry"
+    exports traces, metrics and logs to a collector, which costs memory and CPU,
+    more so under heavy load. A cloud's shared CPU answers fewer messages per
+    second, but memory and CPU per message carry over.
     <a
       href={links.bench}
       class="text-accent-text underline-offset-4 hover:underline"
-      >Run it yourself</a
-    >.
+    >
+      Run it yourself
+    </a>
+    .
   </p>
 </section>
